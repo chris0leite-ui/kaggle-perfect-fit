@@ -120,6 +120,23 @@ x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City
 
 5. **x4 bimodal origin** — Gap at [-0.167, +0.167], width=0.334, gap-ratio=868x the median inter-observation spacing. The gap is exact/manufactured — zero observations in a 0.334-wide band. Split is balanced: 604 below, 596 above. Distribution is identical across cities (KS stat=0.043, p=0.61). **Conclusion:** x4 is a designed variable (likely abs(latent) or truncated), not a natural continuous feature. The bimodality is an artifact of the data generation process, not a modeling concern.
 
+### Confirmed modeling strategy (from EDA + causal discovery + diagnostics)
+
+All diagnostics validated the earlier EDA/causal findings. The confirmed strategy for modeling:
+
+| Decision | Evidence | Source |
+|----------|----------|--------|
+| **Single global model** (no per-cluster splits) | Additive structure confirmed; no interaction (F=0.44, p=0.51); GAM shapes identical across clusters | Cluster analysis + Diagnostic 3 |
+| **x4 as continuous** | Single slope ≈ +31.5; bimodality is a design artifact, not a structure to exploit | Cluster analysis + Diagnostic 5 |
+| **City as binary feature** | Consistent +23.5 effect; identical x4 distribution across cities | Cluster analysis + Diagnostic 5 |
+| **Spline/nonlinear treatment for x1, x2** | GAM R²=0.109 (x1), 0.068 (x2) vs linear R²≈0; combined they add +17.5% R² | EDA + Diagnostic 4 |
+| **Linear treatment for x5, x8, x10, x11** | These 4 features add +31.2% R² with linear terms | Diagnostic 4 |
+| **Impute x5 sentinels with median** | Binary indicator not predictive (p=0.51); sentinel distribution borderline but irrelevant | Diagnostic 1 |
+| **Drop x6, x7, Country** | No signal (linear or nonlinear); Country is constant | EDA |
+| **x9 optional** (marginal gain) | Simpson's paradox: global r=+0.35 is spurious; within-cluster r≈-0.1; R² gain ≈ +0.003 | Cluster analysis |
+| **R² ceiling ≈ 0.938** | Residual std ≈ 6.0; ~6% variance is irreducible noise | Diagnostic 4 |
+| **Mild heteroscedasticity** | Levene p=0.027 across clusters; may benefit from robust/weighted regression | Diagnostic 2 |
+
 ### Diagnostics code
 
 - `src/diagnostics.py`: `sentinel_indicator()`, `sentinel_cluster_crosstab()`, `sentinel_chi2_test()`, `sentinel_target_regression()`, `fit_city_x4_ols()`, `residual_normality_test()`, `residual_heteroscedasticity_test()`, `residual_stats()`, `fit_gam_per_cluster()`, `pooled_vs_cluster_gam_test()`, `fit_r2_ceiling()`, `feature_group_r2_breakdown()`, `x4_bimodality_test()`, `x4_city_distribution_test()`, `x4_gap_analysis()`
