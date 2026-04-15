@@ -1,0 +1,26 @@
+# Data — keep placeholders, ignore content
+data/*
+!data/.gitkeep
+
+# Submissions — keep placeholder, ignore CSVs
+submissions/*
+!submissions/.gitkeep
+
+# Common data formats
+*.csv
+*.zip
+*.parquet
+*.feather
+*.h5
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
