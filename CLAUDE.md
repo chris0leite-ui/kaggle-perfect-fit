@@ -103,6 +103,14 @@ x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City
 - `tests/test_clusters.py`: 15 tests
 - `plots/clusters/summary.png`: composite visualization (box plots, densities, scatter)
 
+### Next analyses (TODO)
+
+1. **x5 sentinel missingness**: Are the 222 sentinel rows evenly distributed across clusters? Test whether a binary `x5_is_sentinel` indicator predicts target beyond the imputed x5 value.
+2. **Residual analysis after City + x4**: Check residual normality, heteroscedasticity across clusters, and remaining patterns to validate the additive assumption.
+3. **x1/x2 nonlinear shapes within clusters**: Confirm the GAM shapes (hump for x1, oscillating for x2) are consistent across all 4 clusters, not cluster-dependent.
+4. **Total R² ceiling**: Fit a combined model (City + x4 + GAM(x1) + GAM(x2) + x5 + x8 + x10 + x11) to measure how much of the remaining 55% variance the other features capture.
+5. **x4 bimodal origin**: Investigate why zero observations exist near x4=0 — truncation, two populations, or design artifact. May reveal hidden structure.
+
 ### Causal discovery code
 
 - `src/causal.py`: `preprocess_for_causal()`, `run_pc()`, `run_direct_lingam()`, `run_ges()`, `adjacency_to_edges()`, `consensus_graph()`, `bootstrap_edges()`
