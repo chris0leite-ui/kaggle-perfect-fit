@@ -24,3 +24,7 @@ __pycache__/
 
 # Testing
 .pytest_cache/
+
+# Local exploration (not committed)
+explore.py
+plots/
