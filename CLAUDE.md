@@ -70,6 +70,39 @@ scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression ·
 - **PC and LiNGAM assume linearity**: They cannot detect nonlinear causal relationships (x1, x2). Nonlinear independence tests (kernel-based, GAM-residual) are needed to complete the picture.
 - **GES is too slow**: `local_score_CV_general` doesn't finish on 12 variables; `local_score_BDeu` gives unreliable results on continuous data. Stick with PC + LiNGAM.
 
+### Cluster analysis (City × x4 interaction)
+
+x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City, this creates 4 balanced clusters (~300 rows each in train.csv):
+
+| Cluster | n | Target mean | Target std |
+|---------|---|-------------|------------|
+| Albacete_high | 296 | +19.6 | 17.5 |
+| Albacete_low | 292 | -2.5 | 17.1 |
+| Zaragoza_high | 300 | -4.4 | 19.0 |
+| Zaragoza_low | 312 | -25.8 | 18.2 |
+
+**Key findings:**
+
+- **Additive, not interactive**: City effect ≈ +23.5 regardless of x4 group; x4 effect ≈ +21.7 regardless of City. F-test for interaction: F=0.44, p=0.51. No interaction term needed.
+- **Cluster means alone → R²=0.449**: Nearly half the variance comes from just City + x4.
+- **Single global x4 slope ≈ +31.5**: Within-cluster slopes are consistent (CIs overlap heavily). No cluster-dependent slope.
+- **Other features (x1, x2, x5, x8, x10, x11) are independent of clusters**: Identical distributions across all 4 groups (Cohen's d < 0.1). They contribute additively to the remaining 55% of variance.
+- **x9 Simpson's paradox**: Globally r(x9,target)=+0.35, but within each cluster r(x9,target)≈-0.1. The positive global correlation is entirely inherited from x4 via between-cluster structure. x9's independent contribution is tiny (R² +0.003, slope ≈ -4).
+
+**Modeling implications:**
+
+- Use x4 as **continuous** (not categorical clusters) — keeps within-group gradient.
+- Model is cleanly additive: `target ≈ 23.6·City + 31.5·x4 + f(x1) + g(x2) + h(x5,x8,x10,x11) + noise`.
+- x1, x2 need **nonlinear** treatment (GAM splines or tree-based).
+- No per-cluster models needed — single model with all features is optimal.
+- x9 is safe to include alongside x4 (partial effect is orthogonal), but gain is marginal.
+
+### Cluster analysis code
+
+- `src/clusters.py`: `find_x4_gap()`, `assign_clusters()`, `replace_sentinels()`, `cluster_stats()`, `plot_boxplots()`, `plot_scatter_x4_target()`, `plot_distributions()`, `plot_summary()`
+- `tests/test_clusters.py`: 15 tests
+- `plots/clusters/summary.png`: composite visualization (box plots, densities, scatter)
+
 ### Causal discovery code
 
 - `src/causal.py`: `preprocess_for_causal()`, `run_pc()`, `run_direct_lingam()`, `run_ges()`, `adjacency_to_edges()`, `consensus_graph()`, `bootstrap_edges()`
