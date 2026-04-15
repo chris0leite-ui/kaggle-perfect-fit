@@ -3,8 +3,10 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from pygam import LinearGAM, s
 from statsmodels.graphics.regressionplots import plot_ccpr, plot_partregress
 
 
@@ -34,15 +36,34 @@ def correlations(df: pd.DataFrame, target: str) -> pd.Series:
 
 
 # ---------------------------------------------------------------------------
+# Internal: GAM smooth with natural-spline constraints
+# ---------------------------------------------------------------------------
+
+def _gam_smooth(x: np.ndarray, y: np.ndarray, n: int = 200):
+    """Fit a GAM spline and return (x_grid, y_pred). Drops non-finite rows."""
+    mask = np.isfinite(x) & np.isfinite(y)
+    xc, yc = x[mask], y[mask]
+    gam = LinearGAM(s(0, spline_order=3)).fit(xc.reshape(-1, 1), yc)
+    x_grid = np.linspace(xc.min(), xc.max(), n)
+    return x_grid, gam.predict(x_grid.reshape(-1, 1))
+
+
+# ---------------------------------------------------------------------------
 # Plotting utilities (visual output, not unit-tested)
 # ---------------------------------------------------------------------------
 
 def scatter_plots(df: pd.DataFrame, features: list, target: str, out_dir: Path) -> None:
-    """Save one scatter plot per feature to out_dir."""
+    """Scatter plot per feature with GAM smooth fit."""
     out_dir.mkdir(parents=True, exist_ok=True)
     for feat in features:
         fig, ax = plt.subplots(figsize=(5, 4))
-        ax.scatter(df[feat], df[target], alpha=0.4, s=10)
+        ax.scatter(df[feat], df[target], alpha=0.4, s=10, color="steelblue")
+        try:
+            xg, yg = _gam_smooth(df[feat].values, df[target].values)
+            ax.plot(xg, yg, color="crimson", linewidth=2, label="GAM smooth")
+            ax.legend(fontsize=8)
+        except Exception:
+            pass
         ax.set_xlabel(feat)
         ax.set_ylabel(target)
         ax.set_title(f"{feat} vs {target}")
@@ -51,8 +72,36 @@ def scatter_plots(df: pd.DataFrame, features: list, target: str, out_dir: Path) 
         plt.close(fig)
 
 
+def pairwise_scatter_plot(df: pd.DataFrame, features: list, out_dir: Path) -> None:
+    """Scatter matrix of all feature pairs with GAM smooth fits on off-diagonal."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    n = len(features)
+    fig, axes = plt.subplots(n, n, figsize=(2.8 * n, 2.8 * n))
+    for i, fy in enumerate(features):
+        for j, fx in enumerate(features):
+            ax = axes[i, j]
+            ax.tick_params(labelsize=6)
+            if i == j:
+                ax.hist(df[fx].dropna(), bins=20, color="steelblue", edgecolor="white")
+            else:
+                ax.scatter(df[fx], df[fy], alpha=0.25, s=4, color="steelblue")
+                try:
+                    xg, yg = _gam_smooth(df[fx].values, df[fy].values)
+                    ax.plot(xg, yg, color="crimson", linewidth=1.2)
+                except Exception:
+                    pass
+            if j == 0:
+                ax.set_ylabel(fy, fontsize=8)
+            if i == n - 1:
+                ax.set_xlabel(fx, fontsize=8)
+    fig.suptitle("Pairwise Scatter Matrix (GAM smooth)", fontsize=13, y=1.01)
+    fig.tight_layout()
+    fig.savefig(out_dir / "pairwise.png", dpi=80, bbox_inches="tight")
+    plt.close(fig)
+
+
 def partial_residual_plots(df: pd.DataFrame, features: list, target: str, out_dir: Path) -> None:
-    """CCPR (partial residual) plots for each feature. Requires all features to be numeric."""
+    """CCPR (partial residual) plots for each feature."""
     out_dir.mkdir(parents=True, exist_ok=True)
     X = sm.add_constant(df[features])
     model = sm.OLS(df[target], X).fit()

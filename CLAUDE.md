@@ -43,4 +43,4 @@ Red-green TDD: write a failing test in `tests/`, implement the minimum in `src/`
 
 ## Stack
 
-scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression
+scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression · pygam (GAMs) · interpret-core (EBM)

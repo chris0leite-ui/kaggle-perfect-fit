@@ -2,6 +2,8 @@ pandas
 numpy
 scikit-learn
 lightgbm
+pygam
+interpret-core
 statsmodels
 matplotlib
 pytest
