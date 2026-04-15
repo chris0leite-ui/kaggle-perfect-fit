@@ -163,3 +163,60 @@ def plot_distributions(df: pd.DataFrame, cluster_col: str, variables: list,
         fig.tight_layout()
         fig.savefig(out_dir / f"{var}_density.png", dpi=100)
         plt.close(fig)
+
+
+def plot_summary(df: pd.DataFrame, cluster_col: str, variables: list,
+                 out_path: Path) -> None:
+    """All cluster plots in a single composite PNG.
+
+    Layout: one row per variable (box plot + density), plus a top row
+    for the x4-vs-target scatter.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    work = _clean_for_plot(df, variables)
+    gap_start, gap_end, _ = find_x4_gap(df["x4"])
+
+    n_vars = len(variables)
+    fig, axes = plt.subplots(n_vars + 1, 2, figsize=(12, 3 * (n_vars + 1)))
+
+    # Row 0: scatter (span both columns)
+    axes[0, 1].remove()
+    ax_sc = fig.add_subplot(n_vars + 1, 2, (1, 2))
+    ax_sc.axvspan(gap_start, gap_end, alpha=0.15, color="gray", label="gap")
+    for c in CLUSTER_ORDER:
+        mask = df[cluster_col] == c
+        ax_sc.scatter(df.loc[mask, "x4"], df.loc[mask, "target"],
+                      alpha=0.35, s=8, color=CLUSTER_COLORS[c], label=c)
+    ax_sc.set_xlabel("x4")
+    ax_sc.set_ylabel("target")
+    ax_sc.set_title("x4 vs target by cluster", fontweight="bold")
+    ax_sc.legend(fontsize=7, loc="upper left")
+
+    # Remaining rows: box plot (left) + density (right) per variable
+    for i, var in enumerate(variables):
+        row = i + 1
+        # Box plot
+        ax_box = axes[row, 0]
+        data = [work.loc[work[cluster_col] == c, var].dropna() for c in CLUSTER_ORDER]
+        bp = ax_box.boxplot(data, labels=CLUSTER_ORDER, patch_artist=True)
+        for patch, c in zip(bp["boxes"], CLUSTER_ORDER):
+            patch.set_facecolor(CLUSTER_COLORS[c])
+            patch.set_alpha(0.6)
+        ax_box.set_ylabel(var)
+        ax_box.set_title(f"{var} — box plot", fontsize=9)
+        ax_box.tick_params(axis="x", rotation=25, labelsize=7)
+
+        # Density
+        ax_den = axes[row, 1]
+        for c in CLUSTER_ORDER:
+            vals = work.loc[work[cluster_col] == c, var].dropna()
+            ax_den.hist(vals, bins=25, alpha=0.35, color=CLUSTER_COLORS[c],
+                        label=c, density=True, edgecolor="white")
+        ax_den.set_ylabel("density")
+        ax_den.set_title(f"{var} — density", fontsize=9)
+        ax_den.legend(fontsize=6)
+
+    fig.suptitle("Cluster Analysis: City × x4", fontsize=14, fontweight="bold", y=1.0)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=100, bbox_inches="tight")
+    plt.close(fig)
