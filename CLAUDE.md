@@ -103,13 +103,29 @@ x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City
 - `tests/test_clusters.py`: 15 tests
 - `plots/clusters/summary.png`: composite visualization (box plots, densities, scatter)
 
-### Next analyses (TODO)
+### Diagnostic analyses (completed)
 
-1. **x5 sentinel missingness**: Are the 222 sentinel rows evenly distributed across clusters? Test whether a binary `x5_is_sentinel` indicator predicts target beyond the imputed x5 value.
-2. **Residual analysis after City + x4**: Check residual normality, heteroscedasticity across clusters, and remaining patterns to validate the additive assumption.
-3. **x1/x2 nonlinear shapes within clusters**: Confirm the GAM shapes (hump for x1, oscillating for x2) are consistent across all 4 clusters, not cluster-dependent.
-4. **Total R² ceiling**: Fit a combined model (City + x4 + GAM(x1) + GAM(x2) + x5 + x8 + x10 + x11) to measure how much of the remaining 55% variance the other features capture.
-5. **x4 bimodal origin**: Investigate why zero observations exist near x4=0 — truncation, two populations, or design artifact. May reveal hidden structure.
+1. **x5 sentinel missingness** — 178 sentinel rows (14.8% of train). Distribution across clusters is borderline non-uniform (chi2=7.67, p=0.053 — Albacete_low has only 29 vs ~50 in others). However, the sentinel indicator does NOT predict target beyond imputed x5 (coef=-1.15, p=0.51). **Conclusion:** Safe to impute with median; no need for a binary indicator feature.
+
+2. **Residual analysis after City + x4** — Base model R²=0.451. Residuals are near-normal (skew=0.04, kurtosis=-0.44) but Shapiro-Wilk rejects at p=0.008 (expected with n=1200). Levene's test shows mild heteroscedasticity across clusters (p=0.027), suggesting slightly different residual variance per group. **Conclusion:** Additive assumption is valid but a robust/heteroscedastic model may gain marginally.
+
+3. **x1/x2 nonlinear shapes within clusters** — Per-cluster GAM R² values are consistent: x1 ranges [0.178, 0.227], x2 ranges [0.136, 0.219]. Shapes are similar across all 4 clusters. However, the pooled-vs-cluster F-test is significant (F≈35, p<0.001) because cluster-specific fits capture between-cluster variance (City+x4 effect), not because the nonlinear shapes differ. **Conclusion:** A single global GAM shape for x1 and x2 is appropriate; no cluster-specific nonlinear terms needed.
+
+4. **Total R² ceiling** — Full model R²=0.938 (adj=0.936), residual std=6.0. R² breakdown:
+   - City + x4: 0.451 (45.1%)
+   - + GAM(x1): 0.547 (+9.7%)
+   - + GAM(x2): 0.626 (+7.8%)
+   - + x5,x8,x10,x11: 0.938 (+31.2%)
+   **Conclusion:** The feature set captures ~94% of variance. Remaining ~6% is likely irreducible noise (std≈6). The linear features (x5,x8,x10,x11) contribute the largest marginal gain after the base.
+
+5. **x4 bimodal origin** — Gap at [-0.167, +0.167], width=0.334, gap-ratio=868x the median inter-observation spacing. The gap is exact/manufactured — zero observations in a 0.334-wide band. Split is balanced: 604 below, 596 above. Distribution is identical across cities (KS stat=0.043, p=0.61). **Conclusion:** x4 is a designed variable (likely abs(latent) or truncated), not a natural continuous feature. The bimodality is an artifact of the data generation process, not a modeling concern.
+
+### Diagnostics code
+
+- `src/diagnostics.py`: `sentinel_indicator()`, `sentinel_cluster_crosstab()`, `sentinel_chi2_test()`, `sentinel_target_regression()`, `fit_city_x4_ols()`, `residual_normality_test()`, `residual_heteroscedasticity_test()`, `residual_stats()`, `fit_gam_per_cluster()`, `pooled_vs_cluster_gam_test()`, `fit_r2_ceiling()`, `feature_group_r2_breakdown()`, `x4_bimodality_test()`, `x4_city_distribution_test()`, `x4_gap_analysis()`
+- `src/diagnostics_plots.py`: `plot_sentinel_distribution()`, `plot_residual_analysis()`, `plot_gam_per_cluster()`, `plot_r2_breakdown()`, `plot_ceiling_residuals()`, `plot_x4_bimodality()`
+- `tests/test_diagnostics.py`: 35 tests
+- `plots/diagnostics/`: sentinel distribution, residual analysis, per-cluster GAMs, R² breakdown, ceiling residuals, x4 bimodality
 
 ### Causal discovery code
 
@@ -117,4 +133,4 @@ x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City
 - `src/causal_plots.py`: `plot_dag()`, `plot_adjacency_heatmap()`, `plot_edge_bootstrap()`
 - `tests/test_causal.py`: 15 tests
 - `plots/causal/`: DAGs, heatmaps, bootstrap charts
-- `plots/index.html`: self-contained HTML viewer with all EDA + causal results
+- `plots/index.html`: self-contained HTML viewer with all EDA + causal + diagnostic results
