@@ -570,3 +570,69 @@ Essentially identical. The public-LB noise floor for *any* model is
 - `plots/formulas/test_pairwise_scatter.png`
 - `plots/formulas/test_correlation_heatmap.png`
 
+## Post-submission modelling experiments
+
+### Simple linear model (A2 minus x9_resid)
+
+Trimmed A2's basis to avoid the x4→x9 shift: `x1² + cos(5π·x2) + x4 +
+x5_imp + x5_is_sent + x8 + x10 + x11 + x10·x11 + City`. Fitted coefficients
+rediscover A2 (x4=+30.4, x5=−8.0, x8=+14.1, city=−24.8, x10·x11=+0.95).
+
+| Variant | CV MAE | Public LB |
+|---|---|---|
+| without x10·x11 | 4.50 | — |
+| **with x10·x11** | **3.70** | **7.38** |
+
+Adding the x10·x11 interaction is worth 0.80 CV MAE (−18%). **Dropping
+`x9_resid` cut A2's test MAE from 9.44 → 7.38 (−22%)** — strong evidence
+that the train→test x4-x9 correlation shift was hurting A2's generalisation.
+
+### EBM hyperparameter grid (CV)
+
+| Variant | CV MAE | Non-sent | Sent | Notes |
+|---|---|---|---|---|
+| **heavy_smooth** | **3.08** | 1.79 | 10.50 | smoothing_rounds=2000, interaction_smoothing=500 |
+| high_reg | 3.09 | 1.81 | 10.46 | reg_alpha=1, reg_lambda=1, min_leaf=30 |
+| baseline (Round 2 tuned) | 3.11 | 1.84 | 10.39 | interactions=10, max_bins=128 |
+| fewer_inter | 3.11 | 1.84 | 10.40 | |
+| more_inter | 3.13 | 1.88 | 10.30 | |
+| default | 3.24 | 1.99 | 10.43 | all EBM defaults |
+| no_x9 | **3.83** | 2.67 | 10.53 | drop x9 from features |
+| heavy_smooth_no_x9 | 3.94 | 2.77 | 10.65 | |
+
+**Dropping x9 hurts EBM CV by +0.72 MAE** because x9 is legitimately
+informative in training (r=0.83 with x4). CV cannot tell us whether x9 helps
+or hurts *test* performance — only the leaderboard can. The linear model's
+LB drop from 9.44 → 7.38 suggests x9 does hurt test; whether EBM extracts
+cleaner partial effects that survive the shift is an open question.
+
+Heavy smoothing gives a marginal 0.03 CV gain over baseline — negligible,
+probably within noise.
+
+### kNN is not competitive
+
+20 configurations (k ∈ {5, 15, 30, 50, 100}, uniform/distance-weighted,
+all features / no x9). Best is **k=5, distance-weighted, all features:
+CV MAE 9.33** — worse than every linear variant and every EBM variant.
+Local similarity cannot recover the cos(5π·x2) / x1² structure.
+
+### Experiment code
+
+- `scripts/cv_simple_linear.py` — trimmed linear model, 5-fold CV
+- `scripts/build_simple_linear_submission.py` — writes submission_simple_linear_interact.csv
+- `scripts/cv_ebm_variants.py` — 8-variant EBM grid
+- `scripts/cv_knn.py` — 20-variant kNN grid
+- `scripts/build_ebm_variant_submissions.py` — writes three EBM submissions
+
+### Kaggle leaderboard tracker
+
+| Submission | CV MAE | Public LB | Place |
+|---|---|---|---|
+| EBM alone (R2 tuned) | 3.11 | **5.66** | **~43** |
+| EBM+GAM 70/30 | 2.91 | 6.47 | — |
+| simple_linear_interact (no x9) | 3.70 | 7.38 | — |
+| A2 ClosedFormModel | 3.49 | 9.44 | — |
+| A1 closed form | 1.80 | 10.80 | — |
+
+Top-of-leaderboard cluster sits at 1.65–1.71 (theoretical floor 1.52).
+
