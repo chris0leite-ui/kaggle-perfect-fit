@@ -35,14 +35,17 @@ src/
   clusters.py      # assign_clusters(), replace_sentinels(), cluster_stats(), cluster plots
   causal.py        # run_pc(), run_direct_lingam(), consensus_graph(), bootstrap_edges()
   causal_plots.py  # plot_dag(), plot_adjacency_heatmap(), plot_edge_bootstrap()
-  features.py      # CityEncoder, SentinelHandler, X9Residualizer, SplineBasisExpander, build_preprocessor()
-  models.py        # GAMRegressor, EBMRegressor, AveragingEnsemble, build_*() for 12 models
-  evaluate.py      # split_val_test(), cross_validate_model(), evaluate_on_holdout(), compare_models()
+  features.py      # CityEncoder, SentinelHandler, X9Residualizer, SplineBasisExpander, InteractionAdder, build_preprocessor()
+  models.py        # GAMRegressor, EBMRegressor, AveragingEnsemble, WeightedEnsemble, StackedEnsemble, build_*() for 20+ models
+  evaluate.py      # split_val_test(), cross_validate_model(), evaluate_on_holdout(), compare_models(), final_test_evaluation()
   diagnostics.py   # compute_shap_values(), compute_ks_tests(), compute_residuals(), EBM shape/interaction plots
-tests/             # mirrors src/ — one test file per module (80 tests total)
+  tuning.py        # grid_search_cv() — diagnostics-informed hyperparameter search
+tests/             # mirrors src/ — one test file per module (115 tests total)
 data/              # gitignored except .gitkeep; holds dataset.csv, train.csv, holdout.csv
 plots/             # EDA, causal, cluster, and diagnostic visualizations + index.html viewer
   diagnostics/     # ~70 PNGs: SHAP, distribution shift, residuals, QQ, EBM shapes
+  eda_round2/      # x10*x11 interaction analysis, x5 sentinel scatter
+  round2/          # Round 2 results: comparison charts, residual plots, QQ plots, results.html
 submissions/       # gitignored except .gitkeep
 ```
 
