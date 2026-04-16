@@ -50,6 +50,8 @@ submissions/       # gitignored except .gitkeep
 
 ## Workflow
 
+**Clarify before planning, plan before coding.** Always ask clarifying questions and go back and forth with the user until there is full alignment on goals, approach, and scope. Do not write plans or code until clarity is achieved. Explore options together, discuss trade-offs, and confirm the direction before proceeding.
+
 Red-green TDD: write a failing test in `tests/`, implement the minimum in `src/` to pass, then refactor.
 
 ## Stack
