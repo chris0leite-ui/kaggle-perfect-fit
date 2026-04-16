@@ -67,13 +67,13 @@ scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression ·
 
 | Variable | Role | Notes |
 |----------|------|-------|
-| **x4** | Primary cause of target | Weight +36.8; also causes x9 (explains r=0.83 between them) |
+| **x4** | Primary cause of target | Weight +36.8. Train-only r=0.83 with x9 is a selection-bias artifact (see post-submission diagnostics); x4 and x9 are actually independent. |
 | **City** | Strong direct cause | Binary (Zaragoza/Albacete); weight -23.2 on target |
 | **x8** | Direct cause | Weight +12.3 |
 | **x5** | Direct cause | Weight -8.1; Pearson r≈0 is misleading due to 222 sentinel values (999.0) |
 | **x10** | Direct cause | Weight +2.6 |
 | **x11** | Direct cause | Weight +2.8 |
-| **x9** | Descendant of x4 | NOT independent — its target correlation (r=0.35) is inherited from x4 |
+| **x9** | Independent predictor (not a descendant of x4) | PC/LiNGAM wrongly inferred x4→x9 from a selection-biased training correlation (r=0.83). Test r(x4,x9)=+0.001. |
 | **x1** | Nonlinear predictor | GAM R²=0.109 but linear R²≈0; hump-shaped relationship. Causal methods missed it (they assume linearity) |
 | **x2** | Nonlinear predictor | GAM R²=0.068 but linear R²≈0; oscillating/wavy relationship. Same blind spot |
 | **x6, x7** | Noise | No linear or nonlinear signal found |
@@ -82,8 +82,8 @@ scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression ·
 ### Key gotchas
 
 - **Sentinel values in x5**: 222 rows have x5=999.0. Must replace with median (or NaN + impute) before any analysis. Masquerades as zero-correlation noise if left in.
-- **x4/x9 collinearity**: r=0.83 but x4 causes x9. Don't include both raw — use x4 alone or x4 + residual(x9|x4).
-- **PC and LiNGAM assume linearity**: They cannot detect nonlinear causal relationships (x1, x2). Nonlinear independence tests (kernel-based, GAM-residual) are needed to complete the picture.
+- **x4/x9 training correlation is selection bias, not causation**: r=0.83 in train, +0.001 in test. x4 and x9 are independent in the true DGP. Residualising x9 on x4 (or otherwise encoding the inferred x4→x9 edge) applies training-only structure and hurts test performance.
+- **PC and LiNGAM assume linearity and no selection bias**: They cannot detect nonlinear causal relationships (x1, x2), and they mistake selection-induced associations for causal edges (x4, x9). Nonlinear independence tests (kernel-based, GAM-residual) and test-set validation are needed to complete the picture.
 - **GES is too slow**: `local_score_CV_general` doesn't finish on 12 variables; `local_score_BDeu` gives unreliable results on continuous data. Stick with PC + LiNGAM.
 
 ### Cluster analysis (City × x4 interaction)
@@ -519,23 +519,30 @@ the true DGP with ~0.15 non-sentinel MAE.
 
 ## Post-submission diagnostics
 
-### Structural shift train → test (x4, x9)
+### x4 and x9 are independent — training correlation is selection bias
 
 The 5-fold CV and the Kaggle leaderboard diverged severely. A pairwise
-correlation check on `dataset.csv` vs `test.csv` explains part of the gap:
+correlation check on `dataset.csv` vs `test.csv` exposed the cause:
 
 | Pair | Train r | Test r |
 |---|---|---|
 | x4 vs x9 | **+0.832** | **+0.001** |
 | every other pair | < 0.05 | < 0.06 |
 
-The **x4 → x9 causal edge that we spent rounds modelling (Simpson's paradox,
-`x9_resid`, etc.) is completely absent in test data**. Every model that
-leaned on x9's inherited target correlation or residualised x9 against x4 is
-applying training-specific structure that the test set doesn't share. This
-is consistent with A1 (raw x9 coef −4) and A2 (`x9_resid` coef −2.4) both
-failing hard, and pure EBM (which learns x9's partial effect from data)
-generalising better.
+**x4 and x9 are actually independent in the true DGP.** The +0.83 training
+correlation is a **relic of selection bias in the training sample**, not a
+causal edge. Our earlier PC/LiNGAM consensus inferred an x4→x9 edge because
+those methods cannot distinguish causation from selection-induced
+association; test data (drawn without the same selection) reveals the
+features are uncorrelated.
+
+Every round of modelling downstream of that mistaken edge — Simpson's-paradox
+framing for x9, `x9_resid`, "x4/x9 collinearity" warnings, the EBM x4 & x9
+interaction of 0.67 — was modelling training-specific structure that the
+test set doesn't share. This explains why A1 (raw x9 coef −4) and A2
+(`x9_resid` coef −2.4) both failed hard, and why pure EBM (which learns x9's
+partial effect from data rather than leaning on residualisation) generalised
+better.
 
 ### x6 / x7 live on a circle of radius 18
 
