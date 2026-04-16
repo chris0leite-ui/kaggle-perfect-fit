@@ -157,6 +157,73 @@ class WeightedEnsemble(BaseEstimator, RegressorMixin):
         return np.average(preds, axis=0, weights=self.weights_)
 
 
+class StackedEnsemble(BaseEstimator, RegressorMixin):
+    """Stacked ensemble: base models produce OOF predictions, Ridge meta-learner
+    learns optimal combination weights.
+
+    At fit time:
+      1. Generate out-of-fold predictions for each base model via K-fold CV
+      2. Fit Ridge on OOF predictions -> target
+      3. Refit all base models on full training data
+
+    At predict time:
+      1. Each base model predicts
+      2. Ridge combines predictions
+    """
+
+    def __init__(self, models=None, n_folds=5, alpha=1.0, seed=42):
+        self.models = models or []
+        self.n_folds = n_folds
+        self.alpha = alpha
+        self.seed = seed
+
+    def fit(self, X, y):
+        from sklearn.base import clone
+        from sklearn.linear_model import Ridge
+        from sklearn.model_selection import KFold
+
+        y_arr = np.asarray(y)
+        n_samples = len(y_arr)
+        n_models = len(self.models)
+        kf = KFold(n_splits=self.n_folds, shuffle=True,
+                    random_state=self.seed)
+
+        # Generate OOF predictions
+        oof = np.zeros((n_samples, n_models))
+        for i, (name, pipe) in enumerate(self.models):
+            for train_idx, val_idx in kf.split(X):
+                if isinstance(X, pd.DataFrame):
+                    X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+                else:
+                    X_tr, X_val = X[train_idx], X[val_idx]
+                y_tr = y_arr[train_idx]
+
+                cloned = clone(pipe)
+                cloned.fit(X_tr, y_tr)
+                oof[val_idx, i] = cloned.predict(X_val)
+
+        self.oof_predictions_ = oof
+
+        # Fit meta-learner on OOF predictions
+        self.meta_model_ = Ridge(alpha=self.alpha, fit_intercept=True)
+        self.meta_model_.fit(oof, y_arr)
+
+        # Refit all base models on full training data
+        self.fitted_models_ = []
+        for name, pipe in self.models:
+            cloned = clone(pipe)
+            cloned.fit(X, y)
+            self.fitted_models_.append((name, cloned))
+
+        return self
+
+    def predict(self, X):
+        base_preds = np.column_stack(
+            [pipe.predict(X) for _, pipe in self.fitted_models_]
+        )
+        return self.meta_model_.predict(base_preds)
+
+
 # ---------------------------------------------------------------------------
 # Model builders
 # ---------------------------------------------------------------------------
@@ -395,6 +462,25 @@ def build_ensemble_ebm_gam_weighted(ebm_weight=0.7, gam_weight=0.3):
         ],
         weights=[ebm_weight, gam_weight],
     )
+
+
+def build_stacked_ensemble(alpha=1.0, n_folds=5, include_lgbm=True):
+    """Stacked ensemble with Ridge meta-learner on OOF predictions.
+
+    Base models: EBM tuned + GAM+interact [+ LightGBM tuned].
+    """
+    base_models = [
+        ("ebm_tuned", build_ebm_tuned(min_samples_leaf=10, max_bins=128,
+                                       max_rounds=2000)),
+        ("gam_interact", build_gam_interact()),
+    ]
+    if include_lgbm:
+        base_models.append(
+            ("lgbm_tuned", build_lgbm_tuned(
+                n_estimators=2000, learning_rate=0.1,
+                max_depth=4, min_child_samples=40)),
+        )
+    return StackedEnsemble(models=base_models, alpha=alpha, n_folds=n_folds)
 
 
 def build_all_models():

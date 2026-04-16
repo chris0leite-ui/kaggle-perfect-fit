@@ -170,5 +170,44 @@
   <tr><td>Random Forest</td><td>~8.8 MAE (poor)</td><td>Can't capture the smooth nonlinear shapes in x1, x2</td></tr>
 </table>
 
+<h2>Stacked Ensemble (Ridge Meta-Learner)</h2>
+
+<div class="summary-box">
+  <p>Ridge regression on out-of-fold predictions learns optimal combination weights from data rather than fixing them manually.</p>
+  <p>Learned weights: <strong>0.608 EBM + 0.404 GAM</strong> (intercept: 0.046) — close to our manual 70/30.</p>
+  <p>LightGBM received weight -0.035 — confirmed as not contributing to the ensemble.</p>
+</div>
+
+<table>
+  <tr><th>Model</th><th>CV MAE</th><th>Val MAE</th><th>Notes</th></tr>
+  <tr><td>Stacked (EBM+GAM, Ridge alpha=1.0)</td><td>3.05</td><td>2.94</td><td>Weights: 0.608/0.404</td></tr>
+  <tr><td>Stacked (EBM+GAM+LGBM, Ridge)</td><td>3.05</td><td>2.96</td><td>LGBM weight: -0.035 (noise)</td></tr>
+  <tr><td>Weighted EBM+GAM (70/30)</td><td>2.99</td><td>2.94</td><td>Manual weights</td></tr>
+  <tr><td>EBM tuned (solo)</td><td>3.16</td><td>3.19</td><td>Reference</td></tr>
+</table>
+
+<p><strong>Conclusion</strong>: Stacking confirms the manual 70/30 weights were near-optimal. The Ridge meta-learner didn't improve over manual weighting on val, but both approaches are essentially tied.</p>
+
+<h2>Final Test Evaluation (Unbiased)</h2>
+
+<div class="summary-box" style="border-left-color: #27ae60;">
+  <h3>Held-out Test Set Results (150 rows, never used during model selection)</h3>
+  <p>Models retrained on train + val (1350 rows), evaluated on test (150 rows).</p>
+</div>
+
+<table>
+  <tr><th>Model</th><th>Test MAE</th><th>vs R1 EBM</th></tr>
+  <tr class="best"><td>R2: Stacked (EBM+GAM, Ridge)</td><td class="highlight">2.52</td><td class="highlight">-10.4%</td></tr>
+  <tr class="best"><td>R2: Weighted EBM+GAM (70/30)</td><td class="highlight">2.53</td><td class="highlight">-10.1%</td></tr>
+  <tr><td>R2: EBM tuned</td><td>2.80</td><td>-0.5%</td></tr>
+  <tr><td>R1: EBM (default)</td><td>2.81</td><td>baseline</td></tr>
+  <tr><td>R2: GAM + x10*x11</td><td>3.18</td><td>+13.0%</td></tr>
+</table>
+
+<div class="summary-box" style="border-left-color: #27ae60;">
+  <p><strong>Final result</strong>: The stacked EBM+GAM ensemble achieves <span class="highlight">Test MAE = 2.52</span>, a 10.4% improvement over the Round 1 EBM baseline.</p>
+  <p>The test MAE (2.52) is better than val MAE (2.94), suggesting the model generalizes well and val MAE was a conservative estimate.</p>
+</div>
+
 </body>
 </html>

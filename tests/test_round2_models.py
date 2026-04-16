@@ -8,6 +8,7 @@ from sklearn.pipeline import Pipeline
 
 from src.features import InteractionAdder, build_preprocessor
 from src.models import (
+    StackedEnsemble,
     build_ebm_tuned,
     build_gam_tuned,
     build_huber_nonlinear,
@@ -17,6 +18,7 @@ from src.models import (
     build_lgbm_tuned,
     build_histgbr_tuned,
     build_rf,
+    build_stacked_ensemble,
 )
 
 
@@ -256,3 +258,66 @@ class TestRandomForest:
         model = pipe.named_steps["model"]
         assert model.n_estimators == 100
         assert model.max_depth == 6
+
+
+# ---------------------------------------------------------------------------
+# Stacked ensemble tests
+# ---------------------------------------------------------------------------
+
+class TestStackedEnsemble:
+
+    def test_fit_predict_shape(self):
+        df = _regression_df(200)
+        train, test = _split(df)
+        ens = build_stacked_ensemble()
+        ens.fit(train.drop(columns=["target"]), train["target"])
+        preds = ens.predict(test.drop(columns=["target"]))
+        assert len(preds) == len(test)
+
+    def test_meta_weights_stored(self):
+        df = _regression_df(200)
+        train, _ = _split(df)
+        ens = build_stacked_ensemble()
+        ens.fit(train.drop(columns=["target"]), train["target"])
+        assert hasattr(ens, "meta_model_")
+        assert hasattr(ens.meta_model_, "coef_")
+        # Should have one coefficient per base model
+        assert len(ens.meta_model_.coef_) == len(ens.models)
+
+    def test_oof_predictions_shape(self):
+        df = _regression_df(200)
+        train, _ = _split(df)
+        ens = StackedEnsemble(
+            models=[
+                ("gam_interact", build_gam_interact()),
+                ("ebm_tuned", build_ebm_tuned()),
+            ],
+            n_folds=3,
+        )
+        ens.fit(train.drop(columns=["target"]), train["target"])
+        # After fit, oof_predictions_ should exist
+        assert hasattr(ens, "oof_predictions_")
+        assert ens.oof_predictions_.shape == (len(train), 2)
+
+    def test_beats_worst_base_model(self):
+        """Stacking should be at least as good as the worst base model."""
+        df = _regression_df(200)
+        train, test = _split(df)
+        X_tr, y_tr = train.drop(columns=["target"]), train["target"]
+        X_te, y_te = test.drop(columns=["target"]), test["target"]
+
+        ens = build_stacked_ensemble()
+        ens.fit(X_tr, y_tr)
+        mae_stacked = np.abs(ens.predict(X_te) - y_te.values).mean()
+
+        # Compare to each base model
+        from sklearn.base import clone
+        base_maes = []
+        for name, pipe in ens.models:
+            model = clone(pipe)
+            model.fit(X_tr, y_tr)
+            mae = np.abs(model.predict(X_te) - y_te.values).mean()
+            base_maes.append(mae)
+
+        worst_base = max(base_maes)
+        assert mae_stacked <= worst_base * 1.1  # allow small tolerance

@@ -306,13 +306,39 @@ EBM's Round 1 diagnostics flagged x10 & x11 as the strongest pairwise interactio
 
 Zaragoza_high remains hardest but improved significantly. The ensemble especially helps on the two clusters where EBM and GAM have different weaknesses.
 
+### Stacked ensemble (Ridge meta-learner)
+
+Ridge regression on out-of-fold (OOF) predictions learns optimal weights from data:
+
+| Model | CV MAE | Val MAE | Learned Weights |
+|-------|--------|---------|-----------------|
+| Stacked (EBM+GAM, Ridge) | 3.05 | 2.94 | 0.608 EBM + 0.404 GAM |
+| Stacked (EBM+GAM+LGBM, Ridge) | 3.05 | 2.96 | 0.634 EBM + 0.410 GAM - 0.035 LGBM |
+| Weighted (70/30 manual) | 2.99 | 2.94 | 0.7 EBM + 0.3 GAM (fixed) |
+
+**Key finding**: Ridge learned weights (~60/40) are close to our manual 70/30. LightGBM receives near-zero weight — it doesn't contribute. Alpha has no effect (problem is too simple for regularization to matter).
+
+### Final test evaluation (unbiased)
+
+Models retrained on train+val (1350 rows), evaluated on held-out test (150 rows, **never used during model selection**):
+
+| Model | Test MAE | vs R1 EBM |
+|-------|----------|-----------|
+| **R2: Stacked (EBM+GAM, Ridge)** | **2.52** | **-10.4%** |
+| **R2: Weighted EBM+GAM (70/30)** | **2.53** | **-10.1%** |
+| R2: EBM tuned | 2.80 | -0.5% |
+| R1: EBM (default) | 2.81 | baseline |
+| R2: GAM + x10*x11 | 3.18 | +13.0% |
+
+Test MAE (2.52) is better than val MAE (2.94), suggesting the model generalizes well and val was a conservative estimate.
+
 ### Round 2 code
 
 - `src/tuning.py`: `grid_search_cv()` — diagnostics-informed hyperparameter search
 - `src/features.py`: added `InteractionAdder`, new preprocessor flavors (`linear_interact`, `linear_spline_interact`)
-- `src/models.py`: added `WeightedEnsemble`, `build_ebm_tuned()`, `build_gam_tuned()`, `build_gam_interact()`, `build_huber_nonlinear()`, `build_quantile_nonlinear()`, `build_linear_nonlinear_interact()`, `build_lgbm_tuned()`, `build_histgbr_tuned()`, `build_rf()`, `build_ensemble_ebm_gam()`, `build_ensemble_ebm_gam_weighted()`
+- `src/models.py`: added `StackedEnsemble`, `WeightedEnsemble`, `build_ebm_tuned()`, `build_gam_tuned()`, `build_gam_interact()`, `build_huber_nonlinear()`, `build_quantile_nonlinear()`, `build_linear_nonlinear_interact()`, `build_lgbm_tuned()`, `build_histgbr_tuned()`, `build_rf()`, `build_ensemble_ebm_gam()`, `build_ensemble_ebm_gam_weighted()`, `build_stacked_ensemble()`
 - `tests/test_tuning.py`: 4 tests
-- `tests/test_round2_models.py`: 27 tests
+- `tests/test_round2_models.py`: 31 tests
 - `plots/round2/results.html`: self-contained HTML with all Round 2 results
 - `plots/round2/`: comparison charts, residual plots, QQ plots, cluster MAE
 - `plots/eda_round2/`: x10*x11 interaction analysis
@@ -321,10 +347,8 @@ Zaragoza_high remains hardest but improved significantly. The ensemble especiall
 
 ### Round 3 potential improvements
 
-1. **Final test evaluation**: Run best model (EBM+GAM 70/30) on held-out test set (150 rows) for unbiased performance estimate.
-2. **Stacked ensemble**: Replace fixed weights with CV-optimized stacking (meta-learner on OOF predictions).
-3. **EBM with explicit x10*x11**: Force-include x10*x11 as an interaction in EBM to see if it improves over auto-discovery.
-4. **Submission generation**: Train on full train.csv, predict on test set, generate Kaggle submission CSV.
+1. **EBM with explicit x10*x11**: Force-include x10*x11 as an interaction in EBM to see if it improves over auto-discovery.
+2. **Submission generation**: Train on full train.csv, predict on test set, generate Kaggle submission CSV.
 
 ### Remaining EDA TODOs (from earlier)
 
