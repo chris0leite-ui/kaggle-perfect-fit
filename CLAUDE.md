@@ -682,3 +682,66 @@ with this — there's no hidden pairwise structure to exploit.
 - `plots/interactions/target_pairwise_residual.png` — mean(residual) per (xi, xj) bin (interactions visible)
 - `plots/interactions/interaction_ranking.csv` — ranked scores for all 55 pairs
 
+## Reweighting attempt — cannot break the x4-x9 shift
+
+Hypothesis: if x4 ⊥ x9 in the true DGP, reweight training rows by
+`w = p(x4)·p(x9) / p(x4, x9)` so the training joint matches the test
+joint, then refit candidate models with `sample_weight=w`.
+
+**Finding: it cannot work here.** The training joint (x4, x9) is two
+disjoint clusters — x4>0 rows have x9 ~ N(5.97, 0.57); x4<0 rows have
+x9 ~ N(4.02, 0.57). Clusters overlap by less than 1σ in x9.
+Within-cluster r(x4, x9) ≈ 0; the +0.83 correlation is entirely
+between-cluster. Test (where x4 ⊥ x9) contains many rows in the
+off-diagonal quadrants — (x4>0, x9<5) and (x4<0, x9>5) — that
+**literally do not exist in training**. Reweighting cannot fabricate
+missing rows; it can only redistribute mass across observed ones.
+`plots/reweight/x4_x9_joint_train_vs_test.png` visualises the gap.
+
+Three DRE estimators tried — all fail to decorrelate:
+
+| Method | Weighted corr(x4, x9) | Notes |
+|---|---|---|
+| unweighted | +0.832 | baseline |
+| HistGBM classifier DRE | +0.814 | shallow: can't separate joint from shuffled well |
+| KDE ratio (Silverman bw) | +0.800 | oversmooths on 2-cluster joint |
+| **Gaussian-copula analytical** | **+0.736** | best but still far from 0 |
+
+CV on downstream models confirms — reweighting hurts slightly, never helps:
+
+| Model | Unweighted CV MAE | Weighted CV MAE | Δ |
+|---|---|---|---|
+| linear (no x9) + x10·x11 | 3.70 | 3.71 | +0.02 |
+| linear (with x9) + x10·x11 | 3.48 | 3.51 | +0.03 |
+| EBM baseline | 3.11 | 3.19 | +0.08 |
+
+Under a *weighted* validation metric (a test-distribution proxy), linear
+models gain marginally (−0.10 for no_x9, −0.11 for with_x9) but EBM
+loses (+0.12). Net: **no robust LB improvement expected** from
+reweighting. Submissions were still built for reference
+(`submission_*_reweighted*.csv`) but are not recommended.
+
+**Remaining options** for the x4-x9 shift:
+
+1. **Drop x9 entirely** — the only robust fix. `submission_ebm_no_x9.csv`
+   already exists (Round 3); the honest LB test hasn't been sent yet.
+   Expected CV hit ≈ +0.7 MAE vs EBM with x9, but should not degrade
+   on LB as sharply as models that lean on the spurious edge.
+2. **Constrained β_x9** in parametric models — pin x9's coefficient to
+   its within-cluster value (~0, or very small negative) rather than
+   the between-cluster-inflated slope. Not directly available in EBM.
+3. **Live with the shift** — EBM alone at 5.66 LB is our best submission;
+   it uses x9 but learns partial effects less aggressively than GAM
+   or the hand-engineered formulas, which is why it generalises better
+   than the ensembles.
+
+### Reweighting code
+
+- `scripts/reweight_x4x9.py` — three DRE estimators (classifier, KDE,
+  Gaussian copula) + 5-fold CV for linear and EBM + submission builder
+- `plots/reweight/weights_overview.png` — scatter of training rows
+  coloured by weight, + weight distribution histogram
+- `plots/reweight/x4_x9_joint_train_vs_test.png` — side-by-side scatter
+  showing the empty training quadrants
+- `plots/reweight/weights.csv` — per-row weights
+
