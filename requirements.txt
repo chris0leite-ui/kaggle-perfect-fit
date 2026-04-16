@@ -10,3 +10,4 @@ pytest
 causal-learn
 lingam
 networkx
+shap

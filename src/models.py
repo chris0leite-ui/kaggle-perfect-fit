@@ -80,10 +80,18 @@ class EBMRegressor(BaseEstimator, RegressorMixin):
     def fit(self, X, y):
         from interpret.glassbox import ExplainableBoostingRegressor
 
+        # Preserve feature names for interpretability
+        if isinstance(X, pd.DataFrame):
+            self.feature_names_ = list(X.columns)
+            feature_names = self.feature_names_
+        else:
+            feature_names = None
+
         self.ebm_ = ExplainableBoostingRegressor(
             interactions=self.interactions,
             max_rounds=self.max_rounds,
             min_samples_leaf=self.min_samples_leaf,
+            feature_names=feature_names,
         )
         X_arr = _df_to_array(X)
         self.ebm_.fit(X_arr, np.asarray(y))
