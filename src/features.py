@@ -90,6 +90,24 @@ class X9Residualizer(BaseEstimator, TransformerMixin):
         return out
 
 
+class InteractionAdder(BaseEstimator, TransformerMixin):
+    """Add pairwise product interaction columns."""
+
+    def __init__(self, pairs=None):
+        self.pairs = pairs or [("x10", "x11")]
+
+    def fit(self, X, y=None):
+        self.is_fitted_ = True
+        return self
+
+    def transform(self, X):
+        out = X.copy()
+        for col_a, col_b in self.pairs:
+            name = f"{col_a}_x_{col_b}"
+            out[name] = out[col_a] * out[col_b]
+        return out
+
+
 class SplineBasisExpander(BaseEstimator, TransformerMixin):
     """Replace x1, x2 with spline basis columns."""
 
@@ -131,9 +149,11 @@ def build_preprocessor(flavor: str, drop_noise: bool = True,
     """Build a preprocessing pipeline.
 
     Flavors:
-        "tree":          CityEncoder -> SentinelHandler(nan)
-        "linear":        CityEncoder -> SentinelHandler(median) [-> X9Residualizer]
-        "linear_spline": CityEncoder -> SentinelHandler(median) [-> X9Residualizer] -> SplineBasisExpander
+        "tree":                 CityEncoder -> SentinelHandler(nan)
+        "linear":               CityEncoder -> SentinelHandler(median) [-> X9Residualizer]
+        "linear_spline":        CityEncoder -> SentinelHandler(median) [-> X9Residualizer] -> SplineBasisExpander
+        "linear_interact":      CityEncoder -> SentinelHandler(median) [-> X9Residualizer] -> InteractionAdder
+        "linear_spline_interact": CityEncoder -> SentinelHandler(median) [-> X9Residualizer] -> SplineBasisExpander -> InteractionAdder
 
     residualize_x9: if True (default for linear flavors), replace x9 with
         x9_resid. Set False for all-vars comparisons that want raw x9.
@@ -146,7 +166,9 @@ def build_preprocessor(flavor: str, drop_noise: bool = True,
         steps.append(("sentinel", SentinelHandler(strategy="median")))
         if residualize_x9:
             steps.append(("x9_resid", X9Residualizer()))
-        if flavor == "linear_spline":
+        if flavor in ("linear_spline", "linear_spline_interact"):
             steps.append(("spline", SplineBasisExpander()))
+        if flavor in ("linear_interact", "linear_spline_interact"):
+            steps.append(("interact", InteractionAdder()))
 
     return Pipeline(steps)

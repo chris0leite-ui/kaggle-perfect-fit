@@ -248,19 +248,85 @@ Top ranking: **City > x4 > x5 > x10 ≈ x11 > x1 > x8 > x2 > x9_resid ≈ 0**. C
 - `tests/test_diagnostics.py`: 6 tests
 - `plots/diagnostics/`: ~70 PNGs (SHAP, distribution, residual, EBM shapes)
 
+## Modeling Results (Round 2)
+
+### x10 × x11 Interaction EDA
+
+EBM's Round 1 diagnostics flagged x10 & x11 as the strongest pairwise interaction (mean |score| = 1.60). Round 2 EDA confirmed:
+
+- **Pure multiplicative**: `x10*x11` is the best functional form (R²=0.258 of residual variance after main effects). Alternatives (quadratic, abs-diff, sum) are all weaker.
+- **F-test**: F=56.3, p<1e-8 in full linear model. Coefficient = +0.88.
+- **Heatmap**: Clean diagonal gradient from low-x10/low-x11 (-8 residual) to high-x10/high-x11 (+18 residual).
+
+### Hyperparameter tuning results
+
+| Model | Best Params | CV MAE | vs Round 1 |
+|-------|-------------|--------|------------|
+| **EBM** | min_samples_leaf=10, max_bins=128, max_rounds=2000 | **3.16** | 3.28→3.16 (-3.7%) |
+| **LightGBM** | n_estimators=2000, lr=0.1, depth=4, min_child=40 | **4.66** | 5.83→4.66 (-20%) |
+| **GAM** | lam=2.0, n_splines=20 | **4.39** | 4.40→4.39 (marginal) |
+
+**Key finding**: EBM's biggest lever was `max_bins=128` (down from default ~256). Fewer bins = stronger regularization = fewer heavy-tailed outliers. `max_rounds` had no effect beyond 2000.
+
+### Round 2 model comparison
+
+| Model | CV MAE | Val MAE | Notes |
+|-------|--------|---------|-------|
+| **EBM+GAM (70/30)** | **2.99** | **2.94** | Best overall; breaks sub-3.0 MAE |
+| EBM+GAM (50/50) | 3.02 | 3.02 | Also strong |
+| R1 EBM (default) | 3.33 | 3.19 | Round 1 winner |
+| EBM tuned | 3.16 | 3.19 | Better CV, same val |
+| GAM + x10*x11 | 3.56 | 3.74 | Massive improvement over base GAM |
+| LightGBM tuned | 4.66 | 4.14 | 20% improvement from tuning |
+| Linear+splines+x10*x11 | 4.56 | 4.53 | Interaction helps linear too |
+| GAM tuned | 4.39 | 4.77 | Near-optimal already |
+| Huber+splines | 5.19 | 5.54 | No improvement over OLS |
+
+### What worked and what didn't
+
+| Approach | Verdict | Impact |
+|----------|---------|--------|
+| **EBM+GAM ensemble** | **Best approach** | Val 3.19→2.94 (-7.8%). Complementary error profiles. |
+| **x10*x11 interaction** | **Major discovery** | GAM 4.40→3.56. Closed 48% of GAM-EBM gap. |
+| EBM max_bins tuning | Helpful | 3.28→3.16 CV. Fewer bins tames outliers. |
+| LightGBM tuning | Helpful | 5.83→4.66. Shallow trees + high regularization. |
+| GAM regularization | Marginal | Already near-optimal. |
+| Quantile regression | **Failed** | 6.96 — L1 loss + splines = optimization issues. |
+| Huber regression | **No effect** | 5.19 vs 5.18 — outliers aren't leverage-type. |
+| Random Forest | **Poor** | ~8.8 MAE. Can't capture smooth x1/x2 nonlinearity. |
+
+### Per-cluster MAE (best model: EBM+GAM 70/30)
+
+| Cluster | R1 EBM | R2 EBM+GAM | Improvement |
+|---------|--------|------------|-------------|
+| Albacete_high | 2.98 | 3.05 | -2.3% |
+| Albacete_low | 3.02 | 2.50 | +17.2% |
+| Zaragoza_high | 3.97 | 3.45 | +13.1% |
+| Zaragoza_low | 2.69 | 2.80 | -4.1% |
+
+Zaragoza_high remains hardest but improved significantly. The ensemble especially helps on the two clusters where EBM and GAM have different weaknesses.
+
+### Round 2 code
+
+- `src/tuning.py`: `grid_search_cv()` — diagnostics-informed hyperparameter search
+- `src/features.py`: added `InteractionAdder`, new preprocessor flavors (`linear_interact`, `linear_spline_interact`)
+- `src/models.py`: added `WeightedEnsemble`, `build_ebm_tuned()`, `build_gam_tuned()`, `build_gam_interact()`, `build_huber_nonlinear()`, `build_quantile_nonlinear()`, `build_linear_nonlinear_interact()`, `build_lgbm_tuned()`, `build_histgbr_tuned()`, `build_rf()`, `build_ensemble_ebm_gam()`, `build_ensemble_ebm_gam_weighted()`
+- `tests/test_tuning.py`: 4 tests
+- `tests/test_round2_models.py`: 27 tests
+- `plots/round2/results.html`: self-contained HTML with all Round 2 results
+- `plots/round2/`: comparison charts, residual plots, QQ plots, cluster MAE
+- `plots/eda_round2/`: x10*x11 interaction analysis
+
 ## Next steps (TODO)
 
-### Round 2 modeling improvements
+### Round 3 potential improvements
 
-1. **EBM hyperparameter tuning**: `min_samples_leaf` 5→10-20, `max_bins` reduction (default ~1000 → 128-256), `smoothing_rounds`, `max_rounds` 5000→2000-3000. Target: tame the heavy-tailed outliers.
-2. **Quantile regression**: Linear models currently minimize MSE but we evaluate MAE. Use `QuantileRegressor(quantile=0.5)` or `HuberRegressor` for the linear+splines model. Free MAE improvement.
-3. **GAM boundary regularization**: Increase `lam` or use natural spline basis (via SplineTransformer) to prevent boundary overshoot causing the left-tail QQ departures.
-4. **Random Forest**: `RandomForestRegressor(criterion="absolute_error", n_estimators=500, max_depth=8-12)`. Expected ~4.5-5.0 MAE. Valuable as ensemble member due to different error profile from EBM.
-5. **Smarter ensemble**: Replace current EBM+HistGBR+LightGBM (dilutes EBM) with EBM+GAM or EBM+RF. EBM has tight core + heavy tails; GAM/RF have lighter tails — complementary profiles.
-6. **x10 × x11 interaction**: Investigate what this interaction represents. Consider adding explicit x10*x11 term to linear/GAM models.
+1. **Final test evaluation**: Run best model (EBM+GAM 70/30) on held-out test set (150 rows) for unbiased performance estimate.
+2. **Stacked ensemble**: Replace fixed weights with CV-optimized stacking (meta-learner on OOF predictions).
+3. **EBM with explicit x10*x11**: Force-include x10*x11 as an interaction in EBM to see if it improves over auto-discovery.
+4. **Submission generation**: Train on full train.csv, predict on test set, generate Kaggle submission CSV.
 
 ### Remaining EDA TODOs (from earlier)
 
-1. **x5 sentinel missingness**: Test whether `x5_is_sentinel` predicts target beyond the imputed x5. (EBM diagnostics show x5_is_sentinel interactions are meaningful — score 0.29-0.36.)
-2. **x1/x2 shapes within clusters**: Confirm shapes are cluster-consistent. (EBM shapes match EDA globally — likely consistent.)
-3. **x4 bimodal origin**: Why zero observations near x4=0? Still unexplored.
+1. **x5 sentinel missingness**: EBM diagnostics show x5_is_sentinel interactions are meaningful (score 0.29-0.36), but standalone indicator is not predictive (p=0.51). Keep current approach.
+2. **x4 bimodal origin**: Why zero observations near x4=0? Still unexplored.
