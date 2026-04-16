@@ -643,3 +643,42 @@ Local similarity cannot recover the cos(5π·x2) / x1² structure.
 
 Top-of-leaderboard cluster sits at 1.65–1.71 (theoretical floor 1.52).
 
+## Interaction search — no further pairs found
+
+Concern: were we missing interactions beyond x10·x11? Ran a full
+per-pair search over all 11 features (10 numeric + City) on dataset.csv.
+
+For each pair (xi, xj):
+1. Fit a simple additive baseline (cubic splines on x1, x2, x4, x8;
+   linear x5 + sentinel indicator + x9 + x10 + x11; one-hot City).
+2. Bin the residuals on a 12×12 grid per pair.
+3. Double-centre the grid (subtract row and column means) so any
+   remaining signal is pure interaction.
+4. Score each pair by RMS of the double-centred grid.
+
+Additive baseline R² ≈ 0.950 (residual std 5.40 vs target std 24.10).
+
+Top 5 pairs by pure-interaction RMS:
+
+| xi | xj | RMS |
+|---|---|---|
+| **x11** | **x10** | **3.02** |
+| x10 | x8 | 1.71 |
+| x8 | x7 | 1.64 |
+| x9 | x8 | 1.63 |
+| x11 | x2 | 1.63 |
+
+**Noise floor calculation**: residual std / √(cells-per-bin) ≈ 5.40 / √10
+≈ **1.71**. Every pair except x10·x11 sits at or below this floor.
+Conclusion: **no additional interactions detectable** beyond x10·x11.
+The ~6% irreducible-noise ceiling from earlier diagnostics is consistent
+with this — there's no hidden pairwise structure to exploit.
+
+### Interaction-search code
+
+- `scripts/plot_target_pairwise_heatmaps.py` — per-pair residual
+  heatmaps + double-centred RMS ranking
+- `plots/interactions/target_pairwise_raw.png` — mean(target) per (xi, xj) bin
+- `plots/interactions/target_pairwise_residual.png` — mean(residual) per (xi, xj) bin (interactions visible)
+- `plots/interactions/interaction_ranking.csv` — ranked scores for all 55 pairs
+
