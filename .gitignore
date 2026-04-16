@@ -2,9 +2,10 @@
 data/*
 !data/.gitkeep
 
-# Submissions — keep placeholder, ignore CSVs
+# Submissions — keep placeholder, ignore CSVs except committed final submissions
 submissions/*
 !submissions/.gitkeep
+!submissions/submission_*.csv
 
 # Common data formats
 *.csv
@@ -12,6 +13,9 @@ submissions/*
 *.parquet
 *.feather
 *.h5
+
+# Exception: final Kaggle submission CSVs are committed for easy download
+!submissions/submission_*.csv
 
 # Python
 __pycache__/
