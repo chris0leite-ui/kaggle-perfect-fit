@@ -395,3 +395,125 @@ Unlike x9, x5 has no confounding or sign-flip:
 
 1. **Submission generation**: Train on full train.csv, predict on test set, generate Kaggle submission CSV.
 2. **x4 bimodal origin**: Why zero observations near x4=0? Still unexplored.
+
+## Round 3 — Reverse-engineered formulas vs Kaggle leaderboard
+
+### Three reverse-engineered formulas compared
+
+Two sibling branches had attempted to reverse-engineer the data-generating
+process. We added our Round 2 ensemble as a third reference point and
+compared all three on the competition test set.
+
+| Approach | Source branch | x4 treatment | x1 / x2 basis | x10·x11 |
+|---|---|---|---|---|
+| **A1** closed form | `reverse-engineer-equation` | `15·x4 + 20·𝟙(x4>0)` (hard step at 0) | `−100·x1²`, `10·cos(5π·x2)` | `+1·x10·x11` |
+| **A2** ClosedFormModel | `review-backwards-engineering` | `+30.5·x4` (pure linear) | `+25·cos(π·x1)`, `+10·cos(5π·x2)` | `+1·x10·x11` |
+| **A3** EBM Round 2 | this branch | nonparametric (plateau in gap) | EBM shape functions | EBM interaction |
+
+### x4 disambiguation: 508 test rows fall in the training gap
+
+Training data has zero observations in x4 ∈ [−0.167, +0.167] (designed bimodal
+gap). The competition test set has **508 rows (33.9%)** inside that gap — a
+natural experiment for distinguishing A1's step from A2/A3's smooth treatments.
+Pairwise prediction differences inside the gap are 2–4× larger than outside
+(see `plots/formulas/preds_vs_x4.png`, `x4_marginal_curves.png`).
+
+### x1 piecewise-linear hypothesis: rejected
+
+Tested whether x1 might also have a step at 0 (analogous to x4). Result: no.
+- `x1²` and `cos(π·x1)` tied at MAE ≈ 3.52 on the x1-residual.
+- Piecewise-linear with step at 0 was worse (MAE ≈ 3.87).
+- Fitted step coefficient was only +1.08 (vs +20 for x4) — effectively zero.
+- x1 has no distribution gap (every histogram bin ≥ 22 observations), so any
+  real step would be detectable.
+
+x1 is smoothly symmetric around 0; the cos / quadratic forms are
+indistinguishable on the observed range.
+
+### 5-fold CV on dataset.csv (1500 rows)
+
+| Rank | Model | CV MAE | Non-sent MAE | Sent MAE |
+|---|---|---|---|---|
+| 1 | **A1 closed form alone** | **1.80** | **0.38** | 10.00 |
+| 2 | NNLS EBM+GAM+A1 | 2.02 | 0.64 | 9.99 |
+| 3 | Stacked EBM+GAM+A1 (Ridge) | 2.04 | 0.66 | 10.02 |
+| 4 | Stacked EBM+GAM+A2 | 2.85 | 1.58 | 10.19 |
+| 5 | EBM+GAM 70/30 (Round 2 best) | 2.91 | 1.65 | 10.19 |
+| 6 | EBM (R2 tuned, alone) | 3.11 | 1.84 | 10.39 |
+| 7 | A2 ClosedFormModel (alone) | 3.49 | 2.30 | 10.28 |
+| 8 | GAM (R2 tuned, alone) | 3.52 | 2.37 | 10.15 |
+
+A1 alone won CV by ~38% over the previous Round 2 ensemble. NNLS allocated
+0.83 weight to A1 and only 0.10/0.07 to EBM/GAM. The training data was almost
+perfectly explained by A1's hand-engineered formula.
+
+### x5 imputation study: cannot be improved beyond mean/median
+
+A1 is exact enough to back-solve the true x5 for 222 sentinel training rows
+from the observed target: x5_true = (rest_of_A1 − target) / 8. Validated on
+non-sentinels: 93.3% match within 0.01 (the remaining 6.7% are the known
+x4<0, x8<0 edge case where A1 clamps x8). Back-solved sentinel x5 distribution
+is Uniform(7, 12), identical to observed non-sentinel x5.
+
+| Strategy | MAE on back-solved x5 |
+|---|---|
+| Mean (9.40) | **1.248** |
+| Median (9.34) | 1.251 |
+| Linear regression | 1.254 |
+| kNN k=100 | 1.256 |
+| LightGBM | 1.309 |
+| kNN k=5 | 1.349 |
+| Nearest-id neighbour | 1.431 |
+
+All Pearson r(x5, feature) < 0.13. Linear regression R² = 0.006. x5 is
+genuinely independent random noise — the theoretical bound for imputing
+Uniform(7, 12) with a constant is (12−7)/4 = **1.25**, exactly matching
+mean/median results. **The 8 × 1.25 = 10.0 sentinel-row MAE floor is
+mathematically irreducible.**
+
+### Kaggle public-leaderboard reality check
+
+CV optimism vs reality — the formulas DID NOT generalise:
+
+| Model | CV MAE | Public LB MAE | Train→Test degradation |
+|---|---|---|---|
+| **EBM alone** | 3.11 | **5.66** | 2.7× |
+| EBM+GAM 70/30 | 2.91 | 6.47 | 3.5× |
+| A2 ClosedFormModel | 3.49 | 9.44 | 4.0× |
+| A1 closed form | 1.80 | **10.80** | **29×** |
+
+For comparison, the leaderboard top 4 cluster at 1.65–1.71 — within 0.2 of
+the theoretical sentinel floor (1.52 = 228·10/1500), implying they recovered
+the true DGP with ~0.15 non-sentinel MAE.
+
+### Conclusions
+
+1. **The reverse-engineered formulas (A1, A2) memorised training data.** A1's
+   "exact" CV fit was an artifact: the cos / quadratic basis + x4 step
+   happened to interpolate the training distribution but doesn't extrapolate.
+2. **The x4 step at 0 is wrong.** Training data has no observations in the
+   gap, so the +20 step couldn't be falsified during reverse-engineering.
+   Test data does cover the gap and exposed it.
+3. **Hand-engineered cos basis is also wrong.** Both A1 and A2 use it; both
+   fail. Only EBM (no functional assumptions) survives the shift.
+4. **GAM hurts EBM in the test regime.** Its rigid linear backbone for
+   x4/x5/x8 contributes miscalibrated signal. Pure EBM beats the ensemble.
+5. **Less inductive bias = better generalisation here.** EBM (5.66) >
+   EBM+GAM (6.47) > A2 (9.44) > A1 (10.80). Direct ranking by formula rigidity.
+6. **Sentinel noise floor confirmed.** 1.52 MAE is the theoretical floor;
+   nobody on the leaderboard beats it. Top 4 are within 0.2 of it.
+7. **Final position: ~43rd / public LB.** Honest CV-validated performance
+   without DGP discovery.
+
+### Round 3 code
+
+- `scripts/compare_formulas.py` — predict from A1/A2/A3 on test.csv + visualise
+- `scripts/test_x1_shape.py` — fit cos / quadratic / piecewise-linear x1 candidates
+- `scripts/cv_ensemble_eval.py` — 5-fold OOF CV across all individual models and ensembles
+- `scripts/cv_sentinel_breakdown.py` — same CV split by sentinel status
+- `scripts/x5_imputation_study.py` — benchmark imputation strategies vs back-solved truth
+- `scripts/build_final_submissions.py` — write Kaggle submissions trained on full data
+- `submissions/submission_*.csv` — six committed Kaggle submissions
+- `plots/formulas/` — 12 PNGs (x4 marginals, x1 candidates, CV bars, sentinel breakdown,
+  x5 imputation, prediction differences, gap distribution)
+
