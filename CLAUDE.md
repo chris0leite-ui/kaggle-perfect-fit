@@ -343,14 +343,52 @@ Test MAE (2.52) is better than val MAE (2.94), suggesting the model generalizes 
 - `plots/round2/`: comparison charts, residual plots, QQ plots, cluster MAE
 - `plots/eda_round2/`: x10*x11 interaction analysis
 
+## Error Analysis & Noise Floor
+
+### x5 sentinels are the dominant error source
+
+All 15 worst ensemble predictions are x5 sentinel observations (x5=999.0):
+
+| Group | n (val) | MAE | Median AE |
+|-------|---------|-----|-----------|
+| Non-sentinel | 123 (82%) | **1.53** | 1.26 |
+| Sentinel | 27 (18%) | **9.39** | 7.62 |
+
+Correlation of `|residual|` with `x5_is_sentinel`: **r=0.70** — no other feature exceeds r=0.12. The worst 15 observations account for **49% of total error**.
+
+### Why sentinels are irreducible
+
+x5 has slope -8.0 on target (strong, consistent across all clusters). When x5=999.0, the true value is missing, introducing ~8 units of random prediction error. Tested alternatives:
+
+| Strategy | Overall MAE | Non-sentinel | Sentinel |
+|----------|-------------|--------------|----------|
+| **Current (NaN + indicator)** | **3.16** | **1.80** | 9.56 |
+| NaN, no indicator | 3.26 | 1.92 | 9.45 |
+| Drop x5, keep indicator | 10.54 | 10.71 | 8.38 |
+| Drop x5 entirely | 10.54 | 10.73 | 8.18 |
+| Forced sentinel interactions in EBM | 4.31 | 3.33 | 8.79 |
+
+Dropping x5 destroys non-sentinel predictions (1.80→10.71). Forcing sentinel interactions trades worse non-sentinel for modest sentinel gain — net negative. The current approach is already optimal.
+
+### No Simpson's paradox for x5
+
+Unlike x9, x5 has no confounding or sign-flip:
+
+- Global slope: -7.99 | Within-cluster slopes: -7.0 to -9.2 (same sign, strong)
+- Partial r *increases* after controlling City+x4 (-0.48 → -0.65, no sign flip)
+- x5 is uncorrelated with x4 (r=0.017) and City (r=0.013)
+- Sentinel missingness is MCAR — no feature predicts it (all |r| < 0.06)
+
+### Noise floor
+
+- **Non-sentinel MAE ≈ 1.5**: True model quality for 82% of the data
+- **Sentinel MAE ≈ 9.5**: Data limitation, not modeling gap
+- Residual kurtosis = 7.38: Bimodal error distribution (tight core + sentinel outliers)
+- EBM and GAM residuals correlate at r=0.79: both fail on the same sentinel observations
+
+**Conclusion**: The ensemble is near-optimal. Further MAE improvement requires better x5 data, not better models.
+
 ## Next steps (TODO)
 
-### Round 3 potential improvements
-
-1. **EBM with explicit x10*x11**: Force-include x10*x11 as an interaction in EBM to see if it improves over auto-discovery.
-2. **Submission generation**: Train on full train.csv, predict on test set, generate Kaggle submission CSV.
-
-### Remaining EDA TODOs (from earlier)
-
-1. **x5 sentinel missingness**: EBM diagnostics show x5_is_sentinel interactions are meaningful (score 0.29-0.36), but standalone indicator is not predictive (p=0.51). Keep current approach.
+1. **Submission generation**: Train on full train.csv, predict on test set, generate Kaggle submission CSV.
 2. **x4 bimodal origin**: Why zero observations near x4=0? Still unexplored.
