@@ -6,6 +6,7 @@ pygam
 interpret-core
 statsmodels
 matplotlib
+scipy
 pytest
 causal-learn
 lingam

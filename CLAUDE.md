@@ -103,13 +103,31 @@ x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City
 - `tests/test_clusters.py`: 15 tests
 - `plots/clusters/summary.png`: composite visualization (box plots, densities, scatter)
 
-### Next analyses (TODO)
+### Pre-modeling diagnostic analyses (completed)
 
-1. **x5 sentinel missingness**: Are the 222 sentinel rows evenly distributed across clusters? Test whether a binary `x5_is_sentinel` indicator predicts target beyond the imputed x5 value.
-2. **Residual analysis after City + x4**: Check residual normality, heteroscedasticity across clusters, and remaining patterns to validate the additive assumption.
-3. **x1/x2 nonlinear shapes within clusters**: Confirm the GAM shapes (hump for x1, oscillating for x2) are consistent across all 4 clusters, not cluster-dependent.
-4. **Total R² ceiling**: Fit a combined model (City + x4 + GAM(x1) + GAM(x2) + x5 + x8 + x10 + x11) to measure how much of the remaining 55% variance the other features capture.
-5. **x4 bimodal origin**: Investigate why zero observations exist near x4=0 — truncation, two populations, or design artifact. May reveal hidden structure.
+1. **x5 sentinel missingness** — 178 sentinel rows (14.8% of train). Distribution across clusters is borderline non-uniform (chi2=7.67, p=0.053 — Albacete_low has only 29 vs ~50 in others). However, the sentinel indicator does NOT predict target beyond imputed x5 (coef=-1.15, p=0.51). **Conclusion:** Safe to impute with median; no need for a binary indicator feature.
+
+2. **Residual analysis after City + x4** — Base model R²=0.451. Residuals are near-normal (skew=0.04, kurtosis=-0.44) but Shapiro-Wilk rejects at p=0.008 (expected with n=1200). Levene's test shows mild heteroscedasticity across clusters (p=0.027), suggesting slightly different residual variance per group. **Conclusion:** Additive assumption is valid but a robust/heteroscedastic model may gain marginally.
+
+3. **x1/x2 nonlinear shapes within clusters** — Per-cluster GAM R² values are consistent: x1 ranges [0.178, 0.227], x2 ranges [0.136, 0.219]. Shapes are similar across all 4 clusters. **Conclusion:** A single global GAM shape for x1 and x2 is appropriate; no cluster-specific nonlinear terms needed.
+
+4. **Total R² ceiling** — Full model R²=0.938 (adj=0.936), residual std=6.0. R² breakdown: City+x4: 0.451, +GAM(x1): 0.547, +GAM(x2): 0.626, +x5/x8/x10/x11: 0.938. **Conclusion:** Feature set captures ~94% of variance. Remaining ~6% is irreducible noise (std≈6).
+
+5. **x4 bimodal origin** — Gap at [-0.167, +0.167], width=0.334, gap-ratio=868x median spacing. Zero observations in a 0.334-wide band. Split balanced (604 below, 596 above), identical across cities (KS p=0.61). **Conclusion:** x4 is a designed variable (likely abs(latent) or truncated), not a natural continuous feature.
+
+### Confirmed modeling strategy
+
+| Decision | Evidence |
+|----------|----------|
+| Single global model (no per-cluster splits) | Additive structure confirmed; no interaction (F=0.44, p=0.51); GAM shapes identical across clusters |
+| x4 as continuous | Single slope ≈ +31.5; bimodality is a design artifact |
+| City as binary feature | Consistent +23.5 effect |
+| Spline/nonlinear treatment for x1, x2 | Combined +17.5% R² over linear |
+| Linear treatment for x5, x8, x10, x11 | These 4 features add +31.2% R² |
+| Impute x5 sentinels with median | Binary indicator not predictive (p=0.51) |
+| Drop x6, x7, Country | No signal; Country constant |
+| R² ceiling ≈ 0.938 | Residual std ≈ 6.0; ~6% irreducible noise |
+| Mild heteroscedasticity | Levene p=0.027; may benefit from robust regression |
 
 ### Causal discovery code
 
