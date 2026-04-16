@@ -517,3 +517,56 @@ the true DGP with ~0.15 non-sentinel MAE.
 - `plots/formulas/` — 12 PNGs (x4 marginals, x1 candidates, CV bars, sentinel breakdown,
   x5 imputation, prediction differences, gap distribution)
 
+## Post-submission diagnostics
+
+### Structural shift train → test (x4, x9)
+
+The 5-fold CV and the Kaggle leaderboard diverged severely. A pairwise
+correlation check on `dataset.csv` vs `test.csv` explains part of the gap:
+
+| Pair | Train r | Test r |
+|---|---|---|
+| x4 vs x9 | **+0.832** | **+0.001** |
+| every other pair | < 0.05 | < 0.06 |
+
+The **x4 → x9 causal edge that we spent rounds modelling (Simpson's paradox,
+`x9_resid`, etc.) is completely absent in test data**. Every model that
+leaned on x9's inherited target correlation or residualised x9 against x4 is
+applying training-specific structure that the test set doesn't share. This
+is consistent with A1 (raw x9 coef −4) and A2 (`x9_resid` coef −2.4) both
+failing hard, and pure EBM (which learns x9's partial effect from data)
+generalising better.
+
+### x6 / x7 live on a circle of radius 18
+
+`sqrt(x6² + x7²) = 18.000` exactly, with std 0 across all 1500 rows in both
+train and test. Only the angle `θ = atan2(x7, x6)` carries information.
+`θ` is uniform on [−π, π] and **independent of every other feature**,
+including x5 and the x5 sentinel indicator:
+
+- `r(θ, x5) = +0.012` on observed-x5 rows
+- Same uniform angle distribution within the 222 sentinel rows
+
+Matches the earlier `reverse-engineer-equation` finding that adding θ as a
+feature hurt EBM CV (3.47 → 3.56). x6 and x7 are noise features dressed up
+as a circle.
+
+### x5 sentinel ratio is preserved
+
+| | n | sentinels (x5=999) | % |
+|---|---|---|---|
+| train (`dataset.csv`) | 1500 | 222 | 14.8 |
+| test (`test.csv`) | 1500 | 228 | 15.2 |
+
+Essentially identical. The public-LB noise floor for *any* model is
+0.152 · 10 = **1.52 MAE**, and leaderboard top 4 at 1.65–1.71 are within
+0.2 of it.
+
+### Post-submission code
+
+- `scripts/plot_x6x7_angle_vs_x5.py` — angle-vs-x5 scatter
+- `scripts/plot_test_pairwise.py` — 10×10 scatter matrix + Pearson heatmap (test.csv)
+- `plots/formulas/x6x7_angle_vs_x5.png`
+- `plots/formulas/test_pairwise_scatter.png`
+- `plots/formulas/test_correlation_heatmap.png`
+
