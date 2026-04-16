@@ -29,10 +29,21 @@ Tests must be run from the repo root so that `src/` is importable.
 ## Architecture
 
 ```
-src/       # importable modules — one file per concern (data, features, models, …)
-tests/     # mirrors src/ — one test file per module
-data/      # gitignored except .gitkeep; holds dataset.csv, train.csv, holdout.csv
-submissions/  # gitignored except .gitkeep
+src/
+  data.py          # split_holdout(), load_train_holdout()
+  eda.py           # detect_sentinels(), correlations(), scatter/partial-residual plots
+  clusters.py      # assign_clusters(), replace_sentinels(), cluster_stats(), cluster plots
+  causal.py        # run_pc(), run_direct_lingam(), consensus_graph(), bootstrap_edges()
+  causal_plots.py  # plot_dag(), plot_adjacency_heatmap(), plot_edge_bootstrap()
+  features.py      # CityEncoder, SentinelHandler, X9Residualizer, SplineBasisExpander, build_preprocessor()
+  models.py        # GAMRegressor, EBMRegressor, AveragingEnsemble, build_*() for 12 models
+  evaluate.py      # split_val_test(), cross_validate_model(), evaluate_on_holdout(), compare_models()
+  diagnostics.py   # compute_shap_values(), compute_ks_tests(), compute_residuals(), EBM shape/interaction plots
+tests/             # mirrors src/ — one test file per module (80 tests total)
+data/              # gitignored except .gitkeep; holds dataset.csv, train.csv, holdout.csv
+plots/             # EDA, causal, cluster, and diagnostic visualizations + index.html viewer
+  diagnostics/     # ~70 PNGs: SHAP, distribution shift, residuals, QQ, EBM shapes
+submissions/       # gitignored except .gitkeep
 ```
 
 **Data split:** `data/dataset.csv` is the full dataset. `src/data.split_holdout()` produces `data/train.csv` (1200 rows) and `data/holdout.csv` (300 rows, seed=42). All exploration and model development use `train.csv` only; `holdout.csv` is reserved for final evaluation.
@@ -43,7 +54,7 @@ Red-green TDD: write a failing test in `tests/`, implement the minimum in `src/`
 
 ## Stack
 
-scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression · pygam (GAMs) · interpret-core (EBM) · causal-learn (PC, GES) · lingam (DirectLiNGAM) · networkx
+scikit-learn · LightGBM · HistGradientBoostingRegressor · LinearRegression · pygam (GAMs) · interpret-core (EBM) · SHAP · causal-learn (PC, GES) · lingam (DirectLiNGAM) · networkx · scipy
 
 ## Learnings from EDA & Causal Discovery
 
