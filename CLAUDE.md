@@ -117,4 +117,119 @@ x4 is bimodal with **zero observations** in [-0.167, +0.167]. Combined with City
 - `src/causal_plots.py`: `plot_dag()`, `plot_adjacency_heatmap()`, `plot_edge_bootstrap()`
 - `tests/test_causal.py`: 15 tests
 - `plots/causal/`: DAGs, heatmaps, bootstrap charts
-- `plots/index.html`: self-contained HTML viewer with all EDA + causal results
+- `plots/index.html`: self-contained HTML viewer with all EDA + causal + diagnostic results
+
+## Modeling Results (Round 1)
+
+### Evaluation setup
+
+- **Metric**: MAE (Mean Absolute Error)
+- **CV**: 5-fold on train.csv (1200 rows), KFold(shuffle=True, seed=42)
+- **Holdout**: holdout.csv (300 rows) split into val (150) + test (150), stratified by City
+- **12 models**: 7 curated (hypothesis-driven features) + 5 all-variables variants
+
+### Model comparison
+
+| Model | CV MAE | Val MAE | Notes |
+|-------|--------|---------|-------|
+| **EBM** | **3.28** | **3.22** | Clear winner; auto-discovers interactions |
+| Ensemble (EBM+HistGBR+LightGBM) | 4.65 | 4.21 | Dragged down by weaker tree models |
+| GAM | 4.40 | 4.80 | Best additive model |
+| LightGBM | 5.83 | 5.29 | Conservative defaults, needs tuning |
+| HistGBR | 5.88 | 5.47 | Conservative defaults, needs tuning |
+| Linear + splines | 5.18 | 5.54 | SplineTransformer for x1/x2 |
+| Linear baseline | 9.98 | 9.50 | City+x4+x5+x8+x10+x11 only |
+
+All-variables variants performed equal or slightly worse (x6/x7 confirmed as noise).
+
+### Hypothesis validation
+
+| Hypothesis | Verdict | Evidence |
+|------------|---------|----------|
+| x6, x7 are noise | **Confirmed** | All-vars models equal or worse; x6 coef=-0.011, x7=-0.032 |
+| x9 residualization correct | **Confirmed** | x9_resid coef=-1.81 (negative, as predicted by Simpson's paradox) |
+| x4 dominant cause | **Confirmed** | Curated linear x4 coef=+31.9 (matches causal +36.8); City=-23.2 (exact) |
+| Nonlinear >> linear | **Confirmed** | Linear MAE ~10 vs GAM 4.4 vs EBM 3.3 (55-67% reduction) |
+| Additive structure | **Partially** | GAM 4.8 vs EBM 3.2 — EBM wins by ~25%, indicating meaningful interactions |
+
+### Modeling code
+
+- `src/features.py`: `CityEncoder`, `SentinelHandler`, `X9Residualizer`, `SplineBasisExpander`, `build_preprocessor()`
+- `src/models.py`: `GAMRegressor`, `EBMRegressor`, `AveragingEnsemble`, `build_*()` functions, `build_all_models()`
+- `src/evaluate.py`: `split_val_test()`, `cross_validate_model()`, `evaluate_on_holdout()`, `compare_models()`, `final_test_evaluation()`
+- `src/data.py`: added `load_train_holdout()`
+- `tests/test_features.py`: 21 tests
+- `tests/test_evaluate.py`: 10 tests
+- `tests/test_models.py`: 21 tests
+
+## Diagnostics & Interpretability
+
+### Distribution shift
+
+No significant covariate shift detected. KS tests for all 8 features: p > 0.05 for both train-vs-val and train-vs-test. Models should generalize.
+
+### EBM shape functions — EDA confirmation
+
+EBM's learned shapes validate our EDA findings precisely:
+- **x1**: Inverted-U (hump) — peak at ~0, dropping to -15 at extremes. Matches GAM R²=0.109.
+- **x2**: Sinusoidal/oscillating — ~3 full cycles. Matches GAM "wavy" finding.
+- **x4**: Roughly linear (+25 slope) with bimodal gap visible near 0.
+- **City**: Binary step: Albacete +12.3, Zaragoza -11.8 (total gap ~24, matches -23.2 weight).
+
+### EBM interactions — new discovery
+
+| Interaction | Mean |Score| | Significance |
+|-------------|----------------|--------------|
+| **x10 & x11** | **1.60** | Strongest by 2.3x — NOT detected in linear EDA |
+| x4 & x9 | 0.67 | Expected (x4 causes x9) |
+| x1 & x5_is_sentinel | 0.36 | Sentinel indicator carries interaction info |
+| x8 & x5_is_sentinel | 0.29 | Same pattern |
+| x8 & x9 | 0.27 | Moderate |
+
+The **x10 × x11 interaction** likely explains the 1.6 MAE gap between GAM (purely additive, 4.8) and EBM (with interactions, 3.2). Our F-test only checked City×x4 — it missed this entirely.
+
+### Per-cluster MAE
+
+| Model | Albacete_high | Albacete_low | Zaragoza_high | Zaragoza_low |
+|-------|--------------|-------------|---------------|-------------|
+| EBM | 3.02 | 2.97 | **4.10** | 2.71 |
+| GAM | 4.94 | 4.92 | **5.44** | 3.87 |
+| Ensemble | 4.23 | 3.89 | **4.65** | 4.07 |
+
+**Zaragoza_high is hardest** for all models — higher residual variance (std ~19.0 vs ~17 for others).
+
+### QQ plot analysis
+
+- **Linear baseline**: Most Gaussian residuals (range -38 to +26). Clean but large errors from missed nonlinearity.
+- **GAM**: Excellent normality in core; slight **left-heavy tail** (3-4 underpredictions at -15 to -17). Possible boundary spline artifacts.
+- **EBM**: **Tightest core** of any model, but **heaviest tails** — 3 points below -20, one near +22. Leptokurtic pattern: extremely accurate for most observations, occasional large outliers.
+- **LightGBM / HistGBR**: Moderate heavy tails on both sides. Core not as tight as GAM or EBM.
+
+**Key insight**: EBM's weakness is outliers, not bias. Its median prediction is excellent, but ~3-5 large-error observations pull up the MAE.
+
+### SHAP feature importance (all models agree)
+
+Top ranking: **City > x4 > x5 > x10 ≈ x11 > x1 > x8 > x2 > x9_resid ≈ 0**. Consistent across linear, GAM, tree models.
+
+### Diagnostics code
+
+- `src/diagnostics.py`: `compute_ks_tests()`, `compute_residuals()`, `compute_cluster_mae()`, `compute_shap_values()`, `plot_*()` functions, `update_index_html()`
+- `tests/test_diagnostics.py`: 6 tests
+- `plots/diagnostics/`: ~70 PNGs (SHAP, distribution, residual, EBM shapes)
+
+## Next steps (TODO)
+
+### Round 2 modeling improvements
+
+1. **EBM hyperparameter tuning**: `min_samples_leaf` 5→10-20, `max_bins` reduction (default ~1000 → 128-256), `smoothing_rounds`, `max_rounds` 5000→2000-3000. Target: tame the heavy-tailed outliers.
+2. **Quantile regression**: Linear models currently minimize MSE but we evaluate MAE. Use `QuantileRegressor(quantile=0.5)` or `HuberRegressor` for the linear+splines model. Free MAE improvement.
+3. **GAM boundary regularization**: Increase `lam` or use natural spline basis (via SplineTransformer) to prevent boundary overshoot causing the left-tail QQ departures.
+4. **Random Forest**: `RandomForestRegressor(criterion="absolute_error", n_estimators=500, max_depth=8-12)`. Expected ~4.5-5.0 MAE. Valuable as ensemble member due to different error profile from EBM.
+5. **Smarter ensemble**: Replace current EBM+HistGBR+LightGBM (dilutes EBM) with EBM+GAM or EBM+RF. EBM has tight core + heavy tails; GAM/RF have lighter tails — complementary profiles.
+6. **x10 × x11 interaction**: Investigate what this interaction represents. Consider adding explicit x10*x11 term to linear/GAM models.
+
+### Remaining EDA TODOs (from earlier)
+
+1. **x5 sentinel missingness**: Test whether `x5_is_sentinel` predicts target beyond the imputed x5. (EBM diagnostics show x5_is_sentinel interactions are meaningful — score 0.29-0.36.)
+2. **x1/x2 shapes within clusters**: Confirm shapes are cluster-consistent. (EBM shapes match EDA globally — likely consistent.)
+3. **x4 bimodal origin**: Why zero observations near x4=0? Still unexplored.
