@@ -856,3 +856,48 @@ within noise.
 - `scripts/cv_rounded_coefs.py` — seven lock configurations, CV + submissions
 - `plots/gam_enhanced/cv_rounded_coefs.csv` — scores per config
 
+## LB verdict on x9_wc — refuted
+
+The x9_wc linear model **failed catastrophically on the leaderboard**:
+
+| Submission | CV MAE | LB MAE |
+|---|---|---|
+| EBM alone (R2 tuned, with x9) | 3.11 | **5.66** ← still best |
+| EBM heavy_smooth, no x9 | — | 7.57 |
+| simple_linear_interact (no x9) | 3.70 | 7.38 |
+| A2 (x9_resid) | 3.49 | 9.44 |
+| **locked_b (x9_wc, β=−4)** | **2.900** | **10.75** |
+| A1 (raw x9 + step) | 1.80 | 10.80 |
+
+**Diagnosis** — the within-cluster Simpson slope β_x9=−4 is a *training-only*
+artifact. On test, x4 ⊥ x9 creates off-diagonal rows (48.9% of test) that
+don't exist in training. Our linear β=−4 extrapolates to x9_wc values up
+to ±2, adding std=8.3 of systematic error for those rows — enough to
+shift EBM's 5.66 baseline to ~10.7. EBM survives the same shift because
+its bounded shape function cannot extrapolate; linear/parametric
+coefficients have no such protection.
+
+**The pattern** — x9 carries ~2 MAE of real signal that EBM extracts
+nonparametrically but **no parametric form captures safely**:
+
+- drop x9 entirely → costs 2 MAE (EBM: 5.66 → 7.57; linear: 7.38)
+- parametric x9 (A1/A2/locked_b) → costs 3–5 MAE via extrapolation
+- nonparametric x9 (EBM) → wins
+
+All x9_wc-based submissions (including the GAM variant and all integer
+locks containing x9_wc) are expected to land ~10–11 on LB and have been
+removed. Remaining candidates in `submissions/`:
+
+- `submission_ebm.csv` — LB 5.66, **current best**
+- `submission_ebm_heavy_smooth.csv` — new, untested, with x9 + extra
+  smoothing; likely 5.4–5.8
+- `submission_linear_enh_locked_f_no_x9.csv` — CV 3.66, locked-integer
+  A2 skeleton without x9; expected ~7.4 LB (in line with existing
+  drop-x9 linear baselines)
+
+### Next-steps code
+
+- `scripts/cv_rounded_coefs_no_x9.py` — locked-integer no-x9 CV + submissions
+- `scripts/build_ebm_variant_submissions.py` — regenerates EBM variants
+
+
