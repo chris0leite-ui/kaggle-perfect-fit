@@ -970,17 +970,49 @@ Train four single-view models, then cross-ensemble:
 - LIN_x4 alone has same form as `simple_linear_interact` (LB 7.38), so cross_LE's LB ceiling is likely somewhere between 4.9 (full EBM) and 7.4 (LIN_x4 alone).
 - `lin_x9` alone has CV 7.07 — catastrophic because β_x9 inflates to ~+20 absorbing x4's training effect.
 
-### Remaining candidates in `submissions/` (8 files)
+### cross_LE LB-confirmed at 2.94 → triple ensemble extends
 
-- `submission_ebm.csv` — LB 5.66 (reference baseline)
-- `submission_ebm_heavy_smooth.csv` — **LB 4.9** (confirmed)
-- `submission_ebm_tune_max_rounds_4k.csv` — **LB 4.9** (confirmed, CV 3.030)
-- `submission_ebm_bag20.csv` — CV 3.022, variance-averaging hedge
-- `submission_ebm_avg_heavy_max4k.csv` — 50/50 of the two LB-4.9's
-- `submission_ensemble_cross_LE.csv` — CV 2.973, **best CV score ever**
-  (LIN_x4 + EBM_x9 avg) — may or may not generalise given the test shift
-- `submission_ensemble_ebm_avg_x4_x9.csv` — CV 3.399
-- `submission_ensemble_full_and_ebmavg_50_50.csv` — CV 3.114
+**cross_LE (0.5 * LIN_x4 + 0.5 * EBM_x9) scored LB 2.94** — essentially
+matching CV 2.973 (no meaningful train/test degradation). That's a 40%
+improvement over the previous LB-best of 4.9. The ensemble is robust to
+the x4-x9 shift because LIN_x4 handles x4 cleanly and EBM_x9 doesn't
+over-commit to x9 (bounded shape + many other features).
+
+Tuning on top:
+
+| Variant | CV MAE | Non-sent |
+|---|---|---|
+| **Triple locked_b λ=0.5** | **2.824** | **1.536** |
+| Triple locked_b λ=0.3 | 2.834 | 1.557 |
+| Triple free λ=0.5 | 2.839 | 1.548 |
+| Triple locked_b λ=0.2 | 2.861 | 1.593 |
+| cross_LE locked_c (w=0.5) | 2.953 | 1.708 |
+| cross_LE locked_b (w=0.5) | 2.955 | 1.708 |
+| **cross_LE free (w=0.5) ← LB 2.94** | **2.973** | 1.718 |
+| cross_LE free (w=0.4) | 3.001 | 1.742 |
+| cross_LE free (w=0.6) | 3.019 | 1.777 |
+| EBM_full alone (LB 4.9) | 3.030 | 1.735 |
+
+**Key findings**:
+- **Adding EBM_full to the ensemble helps a lot** (CV 2.973 → 2.824,
+  with λ=0.5 blend: 25% LIN_x4 + 25% EBM_x9 + 50% EBM_full)
+- Locked-integer LIN_x4 is slightly better than free-fit (2.953 vs 2.973)
+- **0.5 is the optimal blend weight** for LIN_x4 / EBM_x9 (worse either way)
+- If CV→LB continues to hold, triple ensemble projected LB: 2.7–2.85
+
+### Remaining candidates in `submissions/` (6 files)
+
+- `submission_ebm.csv` — LB 5.66 (baseline reference)
+- `submission_ebm_heavy_smooth.csv` — LB 4.9 (previous best, reference)
+- `submission_ensemble_cross_LE.csv` — **LB 2.94 confirmed**
+- `submission_ensemble_cross_LE_locked_c_50.csv` — CV 2.953 (locked x1²=−102)
+- `submission_ensemble_triple_locked_b_lambda30.csv` — CV 2.834 (λ=0.3 variant)
+- `submission_ensemble_triple_locked_b_lambda50.csv` — **CV 2.824, next top candidate**
+
+### Ensemble code
+
+- `scripts/cv_x4_x9_swap_ensemble.py` — 4 base + 6 ensemble CV
+- `scripts/cv_cross_LE_tune.py` — weight + locked coefs + triple ensemble tuning
 
 ### Smoothing + tuning code
 
