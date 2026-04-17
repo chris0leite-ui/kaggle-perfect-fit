@@ -49,6 +49,10 @@ why). Numbers in observation blocks match `CLAUDE.md`.
 - `x4` is bimodal with a gap at `[−0.167, +0.167]`. Training has
   zero observations in this gap; test has 508 rows (33.9%) inside it.
 
+![x4 bimodality — gap at 0](plots/diagnostics/x4_bimodality.png)
+
+![x5 non-sentinel and back-solved sentinel distributions](plots/formulas/x5_imputation_distribution.png)
+
 ### Discussion
 
 Constant `Country` drops out. Binary `City` becomes a ±1 indicator
@@ -76,6 +80,8 @@ signal there, but 34% of test rows live inside it. This is how A1's
   `{x4>0, x9<5}` and `{x4<0, x9>5}`, which are empty in training.
 - x5 sentinel rate is preserved: 14.8% train, 15.2% test.
 - All other pairwise feature correlations are `< 0.06` on both sets.
+
+![(x4, x9) joint: training vs test](plots/reweight/x4_x9_joint_train_vs_test.png)
 
 ### Discussion
 
@@ -111,6 +117,10 @@ extending a trend.
 - Per-pair interaction search (double-centred residual grid, 12×12
   bins): `x10 × x11` is the only pair above the noise floor
   (Root-Mean-Square 3.02 vs floor ~1.71).
+
+![PC + DirectLiNGAM consensus causal graph](plots/causal/consensus_dag.png)
+
+![Per-pair residual heatmap grid — only x10·x11 shows structure](plots/interactions/target_pairwise_residual.png)
 
 ### Discussion
 
@@ -295,6 +305,9 @@ their ceiling.
 - **x6/x7 angle θ as a feature.** KS (Kolmogorov-Smirnov) `p = 0.89`
   against the clamp indicator; independent of every other feature.
   Adding θ hurt EBM CV 3.47 → 3.56.
+
+  ![A1 perfect-fit vs x6/x7 angle — uniform across θ](plots/a1_clamp/a1_fit_vs_x6x7_angle.png)
+
 - **Integer-locked coefficients** on A2's basis. CV 2.90 (identical
   to free fit) — the DGP is integer, but the formula still
   extrapolates wrongly on test (LB 10.75).
