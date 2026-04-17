@@ -921,17 +921,44 @@ If the 25× multiplier observed on the first smoothing jump partially
 holds for subsequent CV gains, the 3.030 variant could plausibly land
 4.3–4.7 on LB. More likely: diminishing returns, so expect 4.7–4.9.
 
+### Smoothing vs. post-refinement — isolated
+
+Because `max_rounds = TOTAL` and `smoothing_rounds = initial smoothed rounds`
+in EBM's API, we had been conflating two axes. Isolating them:
+
+| Smoothing | Post-refine | CV MAE |
+|---|---|---|
+| **4000** | **0** | **3.030** ← best, all-smoothed |
+| 2000 | 4000 | 3.042 |
+| 2000 | 1500 | 3.044 |
+| 4000 | 1500 | 3.044 |
+| 4000 | 4000 | 3.044 |
+| 6000 | 2000 | 3.056 |
+| 6000 | 0 | 3.068 |
+| 2000 | 0 | 3.081 |
+| 500 | 1500 (LB 4.9) | 3.101 |
+| 500 | 1500 (no early_stop) | 3.286 |
+
+**Post-smoothing refinement rounds do not help**, and may slightly hurt.
+All-smoothed with `smoothing_rounds = max_rounds = 4000` is optimal.
+Past 4000, more smoothing (6000) starts degrading. Early stopping
+is load-bearing (disabling it costs +0.19 CV).
+
 ### Remaining candidates in `submissions/` (4 files)
 
 - `submission_ebm.csv` — LB 5.66 (reference baseline)
 - `submission_ebm_heavy_smooth.csv` — **LB 4.9** (current best, confirmed)
-- `submission_ebm_tune_max_rounds_4k.csv` — CV 3.030, **next submission candidate**
-- `submission_ebm_combined_B.csv` — CV 3.033, alternative (adds leaf_5 on top of max_rounds)
+- `submission_ebm_tune_max_rounds_4k.csv` — CV 3.030, **next submission**
+  (all-smoothed 4k/0-post, same config as smooth4000_post0)
+- `submission_ebm_smooth2000_post4000.csv` — CV 3.042, alternative
+  architecture (2k smoothed + 4k refinement — probes whether the CV
+  signal reflects training-specific vs. transferable error)
 
 ### Smoothing + tuning code
 
 - `scripts/cv_ebm_extra_smooth.py` — 2k/4k/6k smoothing + bins + leaf sweep
-- `scripts/cv_ebm_tune_on_4k.py` — interactions / lr / rounds / leaf on 4k baseline
-- `plots/cv_ebm_extra_smooth.csv`, `plots/cv_ebm_tune_on_4k.csv` — full CV tables
+- `scripts/cv_ebm_tune_on_4k.py` — interactions / lr / rounds / leaf on 4k
+- `scripts/cv_ebm_smooth_vs_refine.py` — smoothing × post-refinement grid
+- `plots/cv_ebm_*.csv` — full CV tables
 
 
