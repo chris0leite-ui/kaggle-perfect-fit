@@ -944,15 +944,43 @@ All-smoothed with `smoothing_rounds = max_rounds = 4000` is optimal.
 Past 4000, more smoothing (6000) starts degrading. Early stopping
 is load-bearing (disabling it costs +0.19 CV).
 
-### Remaining candidates in `submissions/` (4 files)
+## x4/x9 swap ensemble — cross_LE improves CV but may not generalise
+
+Train four single-view models, then cross-ensemble:
+- **EBM_x4** — full feature set EXCEPT x9
+- **EBM_x9** — full feature set EXCEPT x4
+- **LIN_x4** — A2-shape linear EXCEPT x9
+- **LIN_x9** — A2-shape linear EXCEPT x4
+
+| Model / Ensemble | CV MAE | Non-sent |
+|---|---|---|
+| **cross_LE (LIN_x4 + EBM_x9 avg)** | **2.973** | **1.718** |
+| ebm_full (LB 4.9 ref) | 3.030 | 1.735 |
+| full_and_EBMavg (50/50) | 3.114 | 1.831 |
+| EBM_avg (EBM_x4 + EBM_x9) | 3.399 | 2.149 |
+| ALL4_avg | 3.936 | 2.820 |
+| cross_EL (EBM_x4 + LIN_x9) | 5.128 | 4.158 |
+| LIN_avg | 5.133 | 4.184 |
+| lin_x9 (no x4) solo | 7.066 | 6.300 |
+
+**Findings**:
+- cross_LE beats full EBM on CV by 0.057 MAE, most of it on sentinel rows (−0.27 sent MAE).
+- LIN_x4 provides clean linear x4 (+30) + sentinel indicator; EBM_x9 supplies nonparametric shapes for x1, x2, x10·x11 that linear approximates badly.
+- **BUT**: EBM_x9 uses x9 as a proxy for x4 (r=0.83 in train). On test (x4⊥x9), x9 predictions for off-diagonal rows will be wrong; averaging with LIN_x4 halves that error, but 48.9% of test rows are off-diagonal.
+- LIN_x4 alone has same form as `simple_linear_interact` (LB 7.38), so cross_LE's LB ceiling is likely somewhere between 4.9 (full EBM) and 7.4 (LIN_x4 alone).
+- `lin_x9` alone has CV 7.07 — catastrophic because β_x9 inflates to ~+20 absorbing x4's training effect.
+
+### Remaining candidates in `submissions/` (8 files)
 
 - `submission_ebm.csv` — LB 5.66 (reference baseline)
-- `submission_ebm_heavy_smooth.csv` — **LB 4.9** (current best, confirmed)
-- `submission_ebm_tune_max_rounds_4k.csv` — CV 3.030, **next submission**
-  (all-smoothed 4k/0-post, same config as smooth4000_post0)
-- `submission_ebm_smooth2000_post4000.csv` — CV 3.042, alternative
-  architecture (2k smoothed + 4k refinement — probes whether the CV
-  signal reflects training-specific vs. transferable error)
+- `submission_ebm_heavy_smooth.csv` — **LB 4.9** (confirmed)
+- `submission_ebm_tune_max_rounds_4k.csv` — **LB 4.9** (confirmed, CV 3.030)
+- `submission_ebm_bag20.csv` — CV 3.022, variance-averaging hedge
+- `submission_ebm_avg_heavy_max4k.csv` — 50/50 of the two LB-4.9's
+- `submission_ensemble_cross_LE.csv` — CV 2.973, **best CV score ever**
+  (LIN_x4 + EBM_x9 avg) — may or may not generalise given the test shift
+- `submission_ensemble_ebm_avg_x4_x9.csv` — CV 3.399
+- `submission_ensemble_full_and_ebmavg_50_50.csv` — CV 3.114
 
 ### Smoothing + tuning code
 
