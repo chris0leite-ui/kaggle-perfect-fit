@@ -41,7 +41,7 @@ plots/                      High-signal diagnostics, formulas, and clamp-analysi
 legacy/                     Archive of exploratory code, stale plots, stale submissions, and rejected ideas.
 CLAUDE.md                   Full development log — every decision, every dead end, every result.
 LEARNINGS.md                Portable patterns for future tabular competitions.
-REPORT.md (in legacy/)      Intermediate summary; superseded by CLAUDE.md + LEARNINGS.md.
+REPORT.md                   Work report: data quirks, distribution shift, models tried, final results, rejected ideas.
 ```
 
 ## Key findings (TL;DR)

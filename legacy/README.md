@@ -75,7 +75,4 @@ at the repo root:
 - `submission_ensemble_cross_LE_locked_c_50.csv` — untested alt of the LB 2.94 best.
 - `submission_ensemble_triple_locked_b_lambda30.csv` — slightly worse CV than the λ=0.5 variant we kept.
 
-### `legacy/REPORT.md`
 
-Intermediate summary written during Round 2. Superseded by `CLAUDE.md`
-(full dev log) and `LEARNINGS.md` (portable takeaways).
