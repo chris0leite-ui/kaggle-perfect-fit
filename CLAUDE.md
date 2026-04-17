@@ -884,20 +884,54 @@ nonparametrically but **no parametric form captures safely**:
 - parametric x9 (A1/A2/locked_b) → costs 3–5 MAE via extrapolation
 - nonparametric x9 (EBM) → wins
 
-All x9_wc-based submissions (including the GAM variant and all integer
-locks containing x9_wc) are expected to land ~10–11 on LB and have been
-removed. Remaining candidates in `submissions/`:
+All x9_wc-based submissions were expected to land ~10–11 on LB and
+have been removed.
 
-- `submission_ebm.csv` — LB 5.66, **current best**
-- `submission_ebm_heavy_smooth.csv` — new, untested, with x9 + extra
-  smoothing; likely 5.4–5.8
-- `submission_linear_enh_locked_f_no_x9.csv` — CV 3.66, locked-integer
-  A2 skeleton without x9; expected ~7.4 LB (in line with existing
-  drop-x9 linear baselines)
+## Smoothing sweep — heavy smoothing is the big lever
 
-### Next-steps code
+`submission_ebm_heavy_smooth.csv` (smoothing_rounds=2000,
+interaction_smoothing_rounds=500) **scored LB 4.9**, a 0.76 MAE
+improvement over the plain EBM's 5.66 despite a CV gain of only 0.03
+(3.11 → 3.08). The CV→LB gain multiplier was ~25×, telling us smoothing
+directly regularises training-specific fit that doesn't transfer.
 
-- `scripts/cv_rounded_coefs_no_x9.py` — locked-integer no-x9 CV + submissions
-- `scripts/build_ebm_variant_submissions.py` — regenerates EBM variants
+Subsequent CV-validated sweep on top of the 2k/500 baseline:
+
+| Variant | Smoothing | max_rounds | Other | CV MAE |
+|---|---|---|---|---|
+| **ebm_tune_max_rounds_4k** | **4k / 1k** | **4000** | defaults | **3.030** |
+| ebm_combined_B | 4k / 1k | 4000 | leaf_5 | 3.033 |
+| ebm_tune_leaf_5 | 4k / 1k | 2000 | leaf_5 | 3.034 |
+| bagged_5seeds_max_rounds_4k | 4k / 1k | 4000 | 5-seed bag | 3.035 |
+| extra_smooth_4k (earlier) | 4k / 1k | 2000 | defaults | 3.053 |
+| extra_smooth_6k | 6k / 2k | 2000 | defaults | 3.061 |
+| heavy_smooth_ref (LB 4.9) | 2k / 500 | 2000 | defaults | 3.081 |
+| bins64 variants | 2k–4k | 2000 | max_bins=64 | 3.12–3.14 (worse) |
+| lr_slow (0.005), inter5, inter20 | — | — | — | 3.09–3.30 (worse) |
+
+**Findings**:
+
+- **4k smoothing dominates 2k** (CV 3.053 vs 3.081). 6k smoothing shows diminishing returns.
+- **max_rounds=4000 + 4k smoothing** is the best single-lever combination (CV 3.030 vs 3.053, a further −0.023 CV).
+- **Bagging 5 seeds gives ~0** beyond single-seed (3.035 vs 3.030) → the model is bias-limited, not variance-limited.
+- **Combining leaf_5, inter15, larger smooth doesn't compound** — max_rounds=4000 alone is optimal.
+- **max_bins=64 hurts** — coarser bins cost 0.05+ CV MAE.
+
+If the 25× multiplier observed on the first smoothing jump partially
+holds for subsequent CV gains, the 3.030 variant could plausibly land
+4.3–4.7 on LB. More likely: diminishing returns, so expect 4.7–4.9.
+
+### Remaining candidates in `submissions/` (4 files)
+
+- `submission_ebm.csv` — LB 5.66 (reference baseline)
+- `submission_ebm_heavy_smooth.csv` — **LB 4.9** (current best, confirmed)
+- `submission_ebm_tune_max_rounds_4k.csv` — CV 3.030, **next submission candidate**
+- `submission_ebm_combined_B.csv` — CV 3.033, alternative (adds leaf_5 on top of max_rounds)
+
+### Smoothing + tuning code
+
+- `scripts/cv_ebm_extra_smooth.py` — 2k/4k/6k smoothing + bins + leaf sweep
+- `scripts/cv_ebm_tune_on_4k.py` — interactions / lr / rounds / leaf on 4k baseline
+- `plots/cv_ebm_extra_smooth.csv`, `plots/cv_ebm_tune_on_4k.csv` — full CV tables
 
 
