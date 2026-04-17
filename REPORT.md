@@ -5,6 +5,20 @@ splits into **Observations** (facts, numbers verifiable against the
 data) and **Discussion** (interpretation: what worked, what didn't,
 why). Numbers in observation blocks match `CLAUDE.md`.
 
+## About this work
+
+This analysis was produced in collaboration between a human researcher
+and **Claude Code** (Anthropic's command-line coding agent). The human
+set the direction, chose which experiments were worth running, and
+submitted to the Kaggle leaderboard. Claude Code handled the
+implementation: exploratory data analysis, causal-discovery runs,
+cross-validated modelling (linear / GAM / LightGBM / EBM / ensembles),
+diagnostic plots, the reverse-engineering comparison, the cross-view
+ensemble, the A1 router, and this report. Work progressed through
+~10 alternating rounds of human-set objectives and Claude-run
+experiments; `CLAUDE.md` keeps the full session log, `LEARNINGS.md`
+distils portable patterns, and this file summarises the outcome.
+
 **Terminology** (used throughout):
 
 - **MAE** — Mean Absolute Error. Our evaluation metric.
