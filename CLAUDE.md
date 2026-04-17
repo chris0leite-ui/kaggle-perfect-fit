@@ -819,6 +819,40 @@ and a cluster-intercept correction that A2 lacked.
 - `scripts/cv_gam_enhanced.py` — 8 variants (linear vs GAM × {square/spline}
   × {cos/spline} × {none/raw/wc} × {with/without x10·x11}), CV + submission
 - `plots/gam_enhanced/cv_results.csv` — all variant scores
-- `submissions/submission_linear_enhanced_x9wc.csv` — CV 2.934, best so far
+- `submissions/submission_linear_enhanced_x9wc.csv` — CV 2.934, free fit
 - `submissions/submission_gam_enhanced_x9wc.csv` — CV 3.002
+
+## Integer-coefficient locking — further CV gain
+
+Testing whether the true DGP uses integer coefficients by fixing them
+and fitting only the intercept.
+
+| Variant | CV MAE | Non-sent | Free params |
+|---|---|---|---|
+| **C. learned-rounded (all locked)** | **2.897** | 1.664 | 1 |
+| B. A1/A2 declared integers (all locked) | 2.900 | 1.661 | 1 |
+| F. A1/A2 integers, x4=+31 variant | 2.904 | **1.653** | 4 |
+| D. partial-lock (obvious integers only) | 2.910 | 1.662 | 6 |
+| A. free fit baseline (all 11 coefs) | 2.934 | 1.684 | 11 |
+
+**Rounding to integers improves CV by 0.03–0.04** even though the free fit
+has 11× more parameters to absorb noise. The locked model uses just the
+intercept + residual x5 sentinel offset, confirming the DGP coefficients
+are genuinely integer. x1²=−100 (A1's value) vs −102 (learned-rounded)
+are indistinguishable on CV (both give 2.900); x4=+30 vs +31 are also
+within noise.
+
+### Locked-coefficient submissions
+
+- `submission_linear_enh_locked_c.csv` — CV 2.897, all coefs locked to
+  learned-rounded (x1²=−102, cos(5π·x2)=+10, x4=+30, x5=−8, x8=+14,
+  x10·x11=+1, city=−25, x9_wc=−4, x10=x11=0, sentinel=−1)
+- `submission_linear_enh_locked_b.csv` — CV 2.900, A1/A2 declared integers
+  (x1²=−100, everything else same as C)
+- `submission_linear_enh_locked_f.csv` — CV 2.904, x4=+31 variant
+
+### Rounded-coefficient code
+
+- `scripts/cv_rounded_coefs.py` — seven lock configurations, CV + submissions
+- `plots/gam_enhanced/cv_rounded_coefs.csv` — scores per config
 
