@@ -25,6 +25,10 @@ drawing conclusions or making recommendations.
 - `x4` is bimodal with a gap at `[−0.167, +0.167]`. Training has zero
   observations in this gap; the test set has 508 rows (33.9%) inside it.
 
+![x4 bimodality — gap at 0](plots/diagnostics/x4_bimodality.png)
+
+![x5 non-sentinel and back-solved sentinel x5 distributions](plots/formulas/x5_imputation_distribution.png)
+
 ## 3. Training vs test distribution observations
 
 - `corr(x4, x9)` = +0.832 in training and +0.001 in test.
@@ -35,6 +39,8 @@ drawing conclusions or making recommendations.
   `{x4>0, x9<5}` and `{x4<0, x9>5}`, which are empty in training.
 - The x5 sentinel rate is preserved: 14.8% in training, 15.2% in test.
 - All other pairwise feature correlations are < 0.06 in both sets.
+
+![(x4, x9) joint: training vs test](plots/reweight/x4_x9_joint_train_vs_test.png)
 
 ## 4. EDA observations
 
@@ -51,6 +57,10 @@ drawing conclusions or making recommendations.
   12×12 bin) ranks `x10 × x11` at RMS 3.02; no other pair exceeds the
   noise floor of ~1.71 (the next-ranked pairs cluster at 1.5–1.7).
 - `sqrt(x6² + x7²) − 18` has std 0 and `corr(θ, x5) = +0.012`.
+
+![PC + DirectLiNGAM consensus DAG](plots/causal/consensus_dag.png)
+
+![Per-pair residual heatmap grid (x10·x11 is the only cell pattern above noise)](plots/interactions/target_pairwise_residual.png)
 
 ## 5. Models trained
 
@@ -150,6 +160,8 @@ Tests run on the 368 quadrant rows with binary label `is_bad = |resid|>0.1`:
   threshold at 0.3/0.4/0.5/0.6) all produced CV 1.855–1.863, vs 1.839 for
   the base router that routes all "safe" rows to A1 regardless of clamp
   probability.
+
+![A1 perfect-fit indicator vs x6/x7 angle — uniform across θ](plots/a1_clamp/a1_fit_vs_x6x7_angle.png)
 
 ## 8. Final submission set
 
