@@ -1,8 +1,10 @@
 # The Perfect Fit — Work Report
 
-Observation-only summary of the work done on the Kaggle Perfect Fit
-competition. Each section reports what was done and what was seen, without
-drawing conclusions or making recommendations.
+Summary of the work done on the Kaggle Perfect Fit competition. Each
+section reports the observations followed by a brief **Discussion** that
+explains what worked, what didn't, and why. Numbers and facts in the
+observation bullets match `CLAUDE.md` exactly; the discussions are
+interpretive.
 
 ## 1. Dataset
 
@@ -29,6 +31,21 @@ drawing conclusions or making recommendations.
 
 ![x5 non-sentinel and back-solved sentinel x5 distributions](plots/formulas/x5_imputation_distribution.png)
 
+**Discussion.** The constant `Country` and the binary `City` are easy
+levers — `Country` drops out and `City` becomes a ±1 indicator with a
+large coefficient (~24–25). The x5 sentinel pattern is clean and
+unambiguous: values are literally `999.0` on the nose, non-sentinel
+values are Uniform(7, 12), and imputation experiments (mean, median,
+kNN, LightGBM) all hit exactly `1.25` per-sentinel MAE — the theoretical
+Uniform-median limit — so nothing can beat median imputation for x5. The
+x6/x7 circle means the radial component carries zero information; the
+angle is uniform and independent of everything, effectively noise. The
+x4 gap is the most consequential quirk: because training has zero
+observations in `[−0.167, 0.167]`, any functional form for target(x4) in
+that region fits training equally well, but 34% of test rows live in
+exactly that region. This is how the A1 closed form's "+20 step at
+x4=0" survived reverse-engineering but failed on the leaderboard.
+
 ## 3. Training vs test distribution observations
 
 - `corr(x4, x9)` = +0.832 in training and +0.001 in test.
@@ -41,6 +58,21 @@ drawing conclusions or making recommendations.
 - All other pairwise feature correlations are < 0.06 in both sets.
 
 ![(x4, x9) joint: training vs test](plots/reweight/x4_x9_joint_train_vs_test.png)
+
+**Discussion.** The x4-x9 correlation flip (`0.83 → 0.001`) is the
+single most consequential shift in this dataset. Training has two
+disjoint clusters of `(x4, x9)`; test draws them independently so 49%
+of test rows land in quadrants literally empty in training. Any model
+that learned an x4-x9 relationship (an interaction term, a residualised
+feature like A2's `x9_resid`, a within-cluster correction like our
+`x9_wc`, or a linear `β_x9` inflated by omitted-variable bias)
+extrapolates wrongly on that 49%. Density-ratio reweighting to recover
+the "true" joint failed for a structural reason: reweighting can only
+redistribute probability mass across observed rows, and the off-diagonal
+quadrants have zero mass in training — there is nothing to reweight
+toward. Models that survived the shift are the ones whose x9 treatment
+cannot extrapolate: EBM's bounded shape functions hold at the boundary
+bin value instead of extending a trend.
 
 ## 4. EDA observations
 
@@ -61,6 +93,23 @@ drawing conclusions or making recommendations.
 ![PC + DirectLiNGAM consensus DAG](plots/causal/consensus_dag.png)
 
 ![Per-pair residual heatmap grid (x10·x11 is the only cell pattern above noise)](plots/interactions/target_pairwise_residual.png)
+
+**Discussion.** Linear-correlation scans work well on `x4, x5, x8,
+x9, x10, x11, City` and miss `x1, x2` entirely — both have `r ≈ 0` but
+a pronounced nonlinear response. GAM and EBM shape functions recovered
+x1's hump and x2's sinusoidal pattern without manual coaxing. The
+**PC + DirectLiNGAM `x4 → x9` edge was a false positive**: both
+algorithms assume linear causal structure and the absence of selection
+bias. The strong train-only correlation satisfied PC's conditional
+independence checks, but the test-set correlation of 0.001 falsifies
+the causal claim. This cost several rounds of modelling (Simpson's
+paradox framing for x9, `x9_resid`, `x9_wc`) that encoded the spurious
+edge. The per-pair interaction search (double-centred residual RMS) was
+model-agnostic and correctly isolated `x10·x11` as the only real
+interaction — no structural assumptions, no false positives. x6/x7's
+independence held against every test thrown at it (uniformity, KS
+against every feature, clamp-trigger search), confirming they carry no
+signal and can be dropped.
 
 ## 5. Models trained
 
@@ -107,6 +156,29 @@ Additional experiments (all CV-validated, not submitted):
   via A1): CV 4.40 for the triple ensemble on top of 2.82 baseline.
 - A1 + EBM residual corrector: CV 2.04.
 
+**Discussion.** Three patterns dominate the CV-vs-LB table. First,
+**parametric models catastrophically fail on LB** (A1 CV 1.80 → LB
+10.80; A2 CV 3.49 → LB 9.44; locked-integer + x9_wc CV 2.90 → LB
+10.75). Their closed-form coefficients for x9 — whether raw, residualised
+against x4, or within-cluster-centered — all encode the training joint
+structure that doesn't exist in test. **Second, EBM's bounded shape
+functions generalise** (CV 3.1 → LB 5.66, with heavy smoothing 3.08 →
+LB 4.90). EBM cannot extrapolate its learned shape past the training
+bins, which is a feature here: on off-diagonal test rows with
+"impossible" (x4, x9) combinations, EBM holds the nearest-bin value
+rather than projecting a trend. **Third, ensembles that mix
+complementary failure modes help dramatically**: `cross_LE`
+(0.5·LIN_x4 + 0.5·EBM_x9) hit LB 2.94 because LIN_x4 has no x9 at all
+(immune to the shift) and EBM_x9 has no x4 but handles everything else
+nonparametrically; their errors on off-diagonal rows partially cancel.
+Adding EBM_full at 50% weight (`triple`) drops CV to 2.82. The router
+on top exploits A1's zero-parameter exactness on the ~20% of safe test
+rows where A1 is the true DGP. Several otherwise-sensible ideas didn't
+work: monotone constraints, dropping interactions, per-cluster training,
+synthetic off-diagonal augmentation, density-ratio reweighting, and an
+EBM residual corrector on A1 — all either hurt CV or relied on a DGP
+oracle we don't have.
+
 ## 6. Closed-form A1 observations
 
 Formula (from `scripts/compare_formulas.py`):
@@ -136,6 +208,22 @@ Zero free parameters. Observations on `dataset.csv`:
 - On the 86 imperfect rows: residual / x8 has mean −18.41, std 0.76,
   range [−21.29, −17.18].
 
+**Discussion.** A1 is effectively the true DGP for ~93% of the non-
+sentinel training rows, which explains why it fits those rows to
+numerical precision (zero free parameters, no overfitting possible).
+The 23% "clamp" subset within `x4<0 AND x8<0` has a strikingly
+consistent signature: `residual = −18.4·x8` with standard deviation
+only 0.76, suggesting the DGP replaces the `+15·x8` term with something
+close to `−3.4·x8` (i.e. coefficient flip plus ~5-unit shift) on a
+hidden subset. A1's LB MAE of 10.80 versus CV of 1.80 is explained by
+two distinct failure modes: the `+20·𝟙(x4>0)` step misfires on 508
+test rows inside the x4 gap (training had zero observations there, so
+the step was unfalsifiable from training), and the `−4·x9` coefficient
+extrapolates badly on the 734 off-diagonal test rows. The two failure
+regions together cover ~83% of test rows, leaving A1 accurate on only
+the ~17% of test rows that are both outside the gap and on the
+training (x4, x9) diagonal.
+
 ## 7. Clamp-trigger search
 
 "Clamp" refers to the 23% of `x4<0 AND x8<0` rows where A1 is imperfect.
@@ -163,6 +251,21 @@ Tests run on the 368 quadrant rows with binary label `is_bad = |resid|>0.1`:
 
 ![A1 perfect-fit indicator vs x6/x7 angle — uniform across θ](plots/a1_clamp/a1_fit_vs_x6x7_angle.png)
 
+**Discussion.** The trigger clearly lives somewhere in multi-feature
+interactions — LightGBM finds AUC 0.76 while no single feature or
+single pairwise threshold does. But AUC 0.76 isn't sharp enough for
+routing to pay off: catching a clamp row saves ~4 MAE (moving from A1's
+~5.6 to triple's ~1.5), while mis-routing an A1-perfect row to triple
+costs ~1.5 MAE. At that 4:1 reward/cost ratio, the classifier would
+need AUC ~0.9 before hard routing breaks even; soft-probability
+blending has the same issue from a different angle. The x6/x7 angle
+null result (p = 0.89 on KS) cheaply rules out a specific hypothesis.
+The residual ~24% uncertainty past AUC 0.76 could be pushed further
+with three-way interactions or a neural network, but it's also
+consistent with the clamp being a Bernoulli(0.23) draw inside the
+`x4<0, x8<0` quadrant — i.e. genuinely stochastic in the DGP and not
+recoverable from the given features.
+
 ## 8. Final submission set
 
 Seven submissions currently held in `submissions/`. CV on `dataset.csv`,
@@ -181,3 +284,21 @@ LB on the competition public leaderboard where tested.
 Public leaderboard top cluster at the time of writing sits at 1.65–1.71.
 The theoretical noise floor from the x5 sentinel (assuming Uniform(7, 12)
 imputation error) is 228 · 10 / 1500 = 1.52.
+
+**Discussion.** The CV→LB relationship splits cleanly by model family.
+EBM-family submissions tracked well: CV 3.11 → LB 5.66, CV 3.08 → LB
+4.90. `cross_LE` (CV 2.97 → LB 2.94) was essentially CV-exact, which is
+unusual and reflects the ensemble's robustness — neither LIN_x4 nor
+EBM_x9 has a mechanism to exploit the training (x4, x9) joint, so
+their CV and LB performance should agree in expectation. Parametric
+models (A1, A2, x9_wc linears) failed this pattern badly: CV
+underestimated LB by 3–9 MAE because CV is sampled from training
+distribution and cannot see the off-diagonal extrapolation that breaks
+on LB. The top LB cluster at 1.65–1.71 sits within 0.2 of the
+theoretical sentinel floor (1.52), implying those submissions have
+recovered the DGP to ~0.15 MAE on non-sentinel rows. A1 achieves this
+on the 93% of training non-sent rows it fits exactly, but loses the
+rest on LB due to the shift. The router's projected LB (~2.5–2.6)
+depends on A1's zero-parameter transfer to the 20% of test rows in
+the three clean quadrants, plus triple's ~1.7 LB non-sent performance
+on the other 60%.
