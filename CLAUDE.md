@@ -1064,6 +1064,17 @@ Simple threshold rules on `x1, x2, x5, x10, x11, x9, |x8|-|x4|` all
 give ~23% clamp rate regardless of threshold — the trigger behaves
 stochastically within the quadrant.
 
+**x6/x7 angle tested and excluded as the clamp trigger**
+(`scripts/investigate_a1_clamp.py`):
+- KS test (bad vs perfect θ distributions): D=0.069, **p=0.89**
+- Mann-Whitney U: **p=0.93**
+- All 8 angular region rules: 22–26% bad rate (flat)
+- corr(θ, |resid|) = +0.014, corr(sin θ, |resid|) = +0.011,
+  corr(cos θ, |resid|) = +0.026 — all p > 0.6
+
+The clamp appears to be a hidden Bernoulli(0.23) in the DGP with no
+feature-observable trigger.
+
 ### Routing CV results
 
 | Strategy | CV | Non-sent | Safe-row MAE |
