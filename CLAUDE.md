@@ -1021,4 +1021,78 @@ Tuning on top:
 - `scripts/cv_ebm_smooth_vs_refine.py` — smoothing × post-refinement grid
 - `plots/cv_ebm_*.csv` — full CV tables
 
+## Routing ensemble — A1 on safe rows breaks the 2.94 plateau
+
+### First attempt (locked_b_full memoriser): rejected
+
+Routing locked_b_full (integer-locked linear + x9_wc, LB 10.75) on safe
+rows and triple on the rest gave CV 2.928 — WORSE than pure triple
+(2.824). Reason: locked_b_full's CV non-sent MAE is 1.66, triple's is
+1.54. Triple is already better on safe rows.
+
+### Correct memoriser: A1 closed form
+
+A1 formula (from `scripts/compare_formulas.py::approach1_predict`,
+zero free parameters):
+
+    target_hat = -100·x1² + 10·cos(5π·x2) + 15·x4 - 8·x5_imp + 15·x8
+               - 4·x9 + x10·x11 - 25·zaragoza + 20·𝟙(x4>0) + 92.5
+
+Training CV MAE 1.80 overall, **non-sent 0.376** — captures the DGP
+almost exactly on most rows.
+
+### Classification of perfectly-fit rows
+
+Empirical finding: A1 residual is exactly 0 (|resid| < 0.01) on
+**93.27% of non-sentinel training rows**. The imperfectly-fit 6.7%
+are **entirely within the x4<0 AND x8<0 quadrant**:
+
+| Quadrant | n | Mean \|resid\| | % bad |
+|---|---|---|---|
+| x4>0, x8>0 | 294 | 0.000 | 0% |
+| x4>0, x8<0 | 331 | 0.000 | 0% |
+| x4<0, x8>0 | 285 | 0.000 | 0% |
+| **x4<0, x8<0** | **368** | **1.306** | **23.4%** |
+
+Within x4<0 & x8<0:
+- **77% (282 rows) are still perfectly fit** by A1
+- **23% (86 rows) have a hidden clamp**: residual ≈ −18.4·x8 (std only 0.76)
+
+The clamp is not predictable from observed features. A 4-level decision
+tree hits only 80% accuracy (the trivial always-"no-clamp" baseline).
+Simple threshold rules on `x1, x2, x5, x10, x11, x9, |x8|-|x4|` all
+give ~23% clamp rate regardless of threshold — the trigger behaves
+stochastically within the quadrant.
+
+### Routing CV results
+
+| Strategy | CV | Non-sent | Safe-row MAE |
+|---|---|---|---|
+| Triple alone | 2.824 | 1.536 | 1.536 |
+| A1 alone (LB 10.80) | 1.800 | 0.376 | 0.377 |
+| **ROUTED default** (safe → A1) | **1.839** | **0.380** | 0.377 |
+| **ROUTED + safe sentinels to A1** | **1.803** | **0.380** | 0.377 |
+| Partial α=0.7 (blend on safe) | 2.134 | 0.726 | — |
+
+Safe row definition for the router:
+
+    safe iff  x5 ≠ 999
+            AND |x4| > 0.167         (outside training gap)
+            AND ((x4 > 0 AND x9 > 5) OR (x4 < 0 AND x9 < 5))
+
+### LB projection for the router
+
+```
+(419 safe × 0.38) + (853 unsafe × ~1.7) + (228 sentinel × ~10) / 1500
+  ≈ 2.5–2.6
+```
+
+That's a ~15% improvement over the LB-2.94 confirmed for cross_LE.
+
+### Router code
+
+- `scripts/cv_router_ensemble.py` — first attempt with locked_b_full (rejected)
+- `scripts/cv_router_A1.py` — correct router with A1 + quadrant diagnostics
+- `submissions/submission_router_A1_triple.csv` — CV 1.839, next LB candidate
+
 
