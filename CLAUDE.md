@@ -1106,4 +1106,95 @@ That's a ~15% improvement over the LB-2.94 confirmed for cross_LE.
 - `scripts/cv_router_A1.py` — correct router with A1 + quadrant diagnostics
 - `submissions/submission_router_A1_triple.csv` — CV 1.839, next LB candidate
 
+## Creative-ideas pass — three probes tried
+
+### 1. A1 + EBM residual corrector — REJECTED
+
+Fit an EBM to model `target − A1(x)` rather than target directly. Hypothesis:
+A1 already captures 93% of non-sent rows exactly, so EBM only needs to
+learn the clamp deviation (~−18.4·x8) and sentinel correction.
+
+Result: A1 alone CV 1.80 → A1+EBM_residual CV 2.04 (non-sent 0.68). The
+EBM over-fits the residual noise on the 1192 rows where A1 is perfect,
+adding more error than it saves on the 86 clamp rows. Dead end.
+
+### 2. Systematic clamp-trigger search — FOUND, UNUSABLE
+
+LightGBM classifier on the 368 rows of the x4<0 & x8<0 quadrant,
+using all features + x6/x7 angle transforms:
+
+- 5-fold OOF **AUC = 0.763** — significant predictive signal
+- Accuracy 0.734 (below trivial 0.766) — classifier over-predicts clamp
+- Top pairwise correlations with `is_bad`: `x8·x9` (−0.17), `x5·x8` (−0.17),
+  `x4−x8` (+0.19), `x4·x8` (+0.14). Trigger lives in interactions.
+
+Using the classifier for router-enhanced routing:
+
+| Router variant | CV |
+|---|---|
+| Base (safe → A1) | **1.839** |
+| Soft (prob-weighted blend) | 1.860 |
+| Hard p>0.5 | 1.855 |
+| Hard p>0.6 | 1.859 |
+
+All worse than base. At AUC 0.76, false-positive cost (routing A1-perfect
+rows to triple, ~1.5 MAE loss) exceeds true-positive benefit (catching a
+clamp, ~4 MAE gain). The 24% residual uncertainty beyond AUC 0.76 may be
+a genuinely stochastic DGP component. Trigger confirmed to exist in
+feature interactions but not sharp enough to exploit.
+
+### 3. Synthetic off-diagonal training data — REJECTED
+
+Augment training with synthetic rows where x9 is resampled from the
+marginal and target is recomputed via A1's formula. Intended to
+decorrelate (x4, x9) in training like the test distribution.
+
+Sanity: synthetic alone corr(x4, x9) = 0.033; combined = 0.476.
+Mechanism works.
+
+CV results (triple ensemble):
+- baseline (mult=0):     CV 2.824
+- mult=1 (+1192 rows):   **CV 4.395  (+1.57)**
+- mult=2 (+2384 rows):   CV 4.720
+
+Why CV degrades so dramatically: the augmented model learns NOT to use
+x9 as an x4 proxy, but CV validation is on original rows where the
+proxy still helps. On LB it might do better, but the synthetic targets
+use A1's `−4·x9` which is itself wrong on test (A1 LB = 10.80) — so
+we'd propagate a miscalibrated x9 effect. Dead end without a DGP oracle
+that generalises to test.
+
+### Creative-ideas code
+
+- `scripts/cv_a1_plus_ebm_residual.py` — A1 + EBM residual (idea 1)
+- `scripts/search_clamp_trigger.py` — pairwise / LightGBM clamp classifier (idea 2)
+- `scripts/cv_router_with_clamp_classifier.py` — router with classifier (idea 2 applied)
+- `scripts/cv_synthetic_augmentation.py` — synthetic off-diagonal (idea 3)
+- `scripts/plot_a1_fit_vs_angle.py` — x6/x7 null-result visualization
+- `plots/a1_clamp/a1_fit_vs_x6x7_angle.png` — rendered figure
+
+### Final state
+
+Remaining competitive submissions (7 files in `submissions/`):
+
+| File | CV | LB | Status |
+|---|---|---|---|
+| `submission_ebm.csv` | 3.11 | 5.66 | baseline |
+| `submission_ebm_heavy_smooth.csv` | 3.08 | 4.90 | tested |
+| `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** | current best |
+| `submission_ensemble_cross_LE_locked_c_50.csv` | 2.95 | ? | untested alt |
+| `submission_ensemble_triple_locked_b_lambda30.csv` | 2.83 | ? | untested |
+| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | ? | untested |
+| `submission_router_A1_triple.csv` | **1.84** | ? | **top CV, expected LB ~2.5-2.6** |
+
+Path forward: test `submission_router_A1_triple.csv` next on LB. If it
+lands around 2.5, the router's A1-on-safe-rows design is our best bet
+given the plateau at 2.94. Beyond that, breaking below 2.5 requires
+either (a) finding the hidden clamp trigger at much higher precision
+than AUC 0.76, (b) a DGP oracle that generalises to test, or (c) a
+neural-network residual over A1 trained with strong regularization.
+All remain open but each faces the same fundamental constraint:
+training is selection-biased and we have no test-distribution labels.
+
+
 
