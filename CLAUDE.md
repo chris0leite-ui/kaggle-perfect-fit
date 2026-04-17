@@ -745,3 +745,80 @@ reweighting. Submissions were still built for reference
   showing the empty training quadrants
 - `plots/reweight/weights.csv` — per-row weights
 
+## Simpson-corrected x9 — breakthrough CV MAE
+
+Key insight: instead of dropping x9 or residualising against x4 (both of
+which encode training-specific structure or throw away the true signal),
+**center x9 per x4-cluster**:
+
+    x9_wc = x9 − E[x9 | sign(x4)]
+
+Cluster means from training: E[x9 | x4>0] = 5.971; E[x9 | x4<0] = 4.016.
+By construction, x9_wc is uncorrelated with sign(x4) in training, so a
+linear fit recovers only the within-cluster (Simpson's-paradox-true)
+slope. Reverse-engineered A2's closed form plus x9_wc gives the cleanest
+model we have:
+
+| Model | CV MAE | Non-sent | x9 treatment |
+|---|---|---|---|
+| **linear parametric + x9_wc** | **2.934** | **1.684** | within-cluster center |
+| **GAM + x9_wc** | **3.002** | 1.784 | within-cluster center |
+| GAM parametric x1/x2 + x9_wc | 3.365 | 2.170 | within-cluster center |
+| linear parametric + raw x9 | 3.477 | 2.296 | raw (β_x9 = −2.41, contaminated) |
+| GAM + raw x9 | 3.519 | 2.367 | raw |
+| GAM + x10·x11 (no x9) | 3.734 | 2.609 | dropped |
+| linear parametric (no x9) — prev LB 7.38 | 3.695 | 2.537 | dropped |
+| EBM alone (R2 tuned) — LB 5.66 | 3.11 | 1.84 | raw in EBM |
+| EBM+GAM 70/30 — LB 6.47 | 2.91 | 1.65 | raw + residualised |
+
+The enhanced linear model beats EBM on CV and ties the EBM+GAM ensemble
+(−5% vs simple-linear-no-x9 baseline, −16% vs raw-x9 variant). β_x9_wc
+= **−4.28**, matching the predicted within-cluster slope ≈ −4 almost
+exactly.
+
+### Coefficients vs reverse-engineered A2
+
+| Feature | Learned on full dataset | A1/A2 closed form |
+|---|---|---|
+| x1² | −101.54 | −100 (A1) |
+| cos(5π·x2) | +9.99 | +10 (A1) |
+| x4 | +30.47 | +30.5 (A2) |
+| x5_imp | −8.02 | −8 |
+| x5_is_sent | −1.19 | (intercept offset) |
+| x8 | +14.07 | +14.1 |
+| x10 | +0.11 | +3 (small — dominated by x10·x11) |
+| x11 | +0.05 | +2.5 |
+| x10·x11 | +0.97 | +1 |
+| city (Zaragoza=1) | −24.99 | −24.8 |
+| **x9_wc** | **−4.28** | (A2 used x9_resid with coef −2.4 — contaminated) |
+
+The model recovers A2's hand-engineered coefficients and replaces its one
+broken piece (x9_resid) with the Simpson-corrected x9_wc. Since the +0.83
+train correlation is removed by construction, the x9 contribution should
+now survive the test-distribution shift.
+
+### Why this may finally generalise
+
+A2 failed on LB (9.44) because its x9_resid term relied on x4-x9 coupling
+that doesn't exist in test. x9_wc sidesteps this: it is orthogonal to
+sign(x4) by construction, so its coefficient reflects only the within-
+cluster partial effect, which is invariant under train→test. The model
+algebraically equals:
+
+    prediction = β_x1·x1² + β_x2·cos(5π·x2) + β_x4·x4
+               + β_x5·x5_imp + β_sent·x5_is_sent + β_x8·x8
+               + β_x10·x10 + β_x11·x11 + β_x10x11·x10·x11
+               + β_city·city + β_x9·x9 + β_cluster·sign(x4)
+
+(the sign(x4) dummy is absorbed into the x4 coefficient, but mathematically
+it is there). This is identical to A2's form with a clean β_x9 = −4.28
+and a cluster-intercept correction that A2 lacked.
+
+### Enhanced-GAM code
+
+- `scripts/cv_gam_enhanced.py` — 8 variants (linear vs GAM × {square/spline}
+  × {cos/spline} × {none/raw/wc} × {with/without x10·x11}), CV + submission
+- `plots/gam_enhanced/cv_results.csv` — all variant scores
+- `submissions/submission_linear_enhanced_x9wc.csv` — CV 2.934, best so far
+- `submissions/submission_gam_enhanced_x9wc.csv` — CV 3.002
+
