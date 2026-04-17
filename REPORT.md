@@ -86,18 +86,39 @@ signal there, but 34% of test rows live inside it. This is how A1's
 ### Discussion
 
 The x4-x9 correlation flip (0.83 → 0.001) is the single most
-consequential shift in this dataset. Any model that learned an x4-x9
-relationship — an interaction term, a residualised feature like A2's
+consequential shift in this dataset and is a textbook **selection
+bias** artifact: training rows were drawn in a way that coupled x4
+and x9 (two disjoint clusters), while the generative process used for
+the test set samples them independently. The correlation is real in
+the training sample and absent in the true data-generating process.
+Any model that treats the training coupling as structural — an
+interaction term, a residualised feature like A2's
 `x9_resid = x9 − β·x4`, a cluster-centered `x9_wc`, or a linear
 coefficient on x9 inflated by omitted-variable bias — extrapolates
-wrongly on the 49% of test rows in the empty quadrants. Density-ratio
-reweighting to recover the "true" joint failed for a structural
-reason: reweighting only redistributes probability mass across
-observed rows, and the off-diagonal quadrants have zero mass in
-training — there is nothing to reweight toward. Models that survived
-the shift are the ones whose x9 treatment cannot extrapolate: EBM's
-bounded shape functions hold at the boundary bin value instead of
-extending a trend.
+wrongly on the 49% of test rows in the off-diagonal quadrants.
+
+Our mitigation is the **cross-view ensemble** behind
+`submission_ensemble_cross_LE.csv` (LB MAE 2.94, our best public
+result). We fit the full feature set **twice**:
+
+- one model drops `x9` and keeps `x4`;
+- one model drops `x4` and keeps `x9`.
+
+Neither single model can exploit the spurious x4-x9 coupling because
+only one of the two features is visible to it. Averaging their
+predictions `0.5·LIN(no x9) + 0.5·EBM(no x4)` cancels each view's
+reliance on the training joint: on an off-diagonal test row, one
+submodel sees only x4 (correct) and the other sees only x9
+(correct); the selection-induced bias from each is uncorrelated and
+partially averages out.
+
+Density-ratio reweighting (our alternative attempt to "fix" the joint)
+failed for a structural reason: reweighting only redistributes
+probability mass across observed rows, and the off-diagonal quadrants
+have zero mass in training — there is nothing to reweight toward.
+Models that survived the shift without ensembling are the ones whose
+x9 treatment cannot extrapolate: EBM's bounded shape functions hold
+at the boundary bin value instead of projecting a trend.
 
 ## 4. Signal discovery
 
