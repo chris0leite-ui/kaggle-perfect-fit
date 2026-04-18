@@ -1175,29 +1175,172 @@ that generalises to test.
 
 ### Final state
 
-Competitive submissions kept in `submissions/` (4 files):
+Competitive submissions kept in `submissions/`; dominated ones moved to
+`legacy/submissions/` during post-experiment cleanup.
 
 | File | CV | LB | Status |
 |---|---|---|---|
 | `submission_ebm_heavy_smooth.csv` | 3.08 | 4.90 | tested |
-| `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** | current best |
-| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | ? | untested |
-| `submission_router_A1_triple.csv` | **1.84** | ? | **top CV, expected LB ~2.5-2.6** |
+| `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** | **current best** |
+| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | **3.71** | tested — regression |
+| `submission_router_A1_triple.csv` | **1.84** | **3.35** | tested — regression |
+| `submission_triple_view.csv` | 2.92 | **4.66** | tested — regression |
+| `legacy/submissions/submission_ebm.csv` | 3.11 | 5.66 | archived baseline |
+| `legacy/submissions/submission_ensemble_cross_LE_locked_c_50.csv` | 2.95 | ? | archived alt |
+| `legacy/submissions/submission_ensemble_triple_locked_b_lambda30.csv` | 2.83 | ? | archived |
 
-Three earlier candidates (`submission_ebm.csv`,
-`submission_ensemble_cross_LE_locked_c_50.csv`,
-`submission_ensemble_triple_locked_b_lambda30.csv`) were moved to
-`legacy/submissions/` during final cleanup — all were dominated on
-either CV or LB by the four kept.
+## LB verdict on router + triple — both regress vs cross_LE
 
-Path forward: test `submission_router_A1_triple.csv` next on LB. If it
-lands around 2.5, the router's A1-on-safe-rows design is our best bet
-given the plateau at 2.94. Beyond that, breaking below 2.5 requires
-either (a) finding the hidden clamp trigger at much higher precision
-than AUC 0.76, (b) a DGP oracle that generalises to test, or (c) a
-neural-network residual over A1 trained with strong regularization.
-All remain open but each faces the same fundamental constraint:
-training is selection-biased and we have no test-distribution labels.
+Two previously untested candidates returned LB scores:
+
+| Submission | CV | LB | CV→LB multiplier |
+|---|---|---|---|
+| cross_LE (prior best) | 2.97 | 2.94 | 0.99× |
+| triple_locked_b λ=0.5 | 2.82 | **3.71** | 1.32× |
+| router_A1_triple | 1.84 | **3.35** | **1.82×** |
+
+**Key takeaways**:
+
+1. **cross_LE at LB 2.94 remains the best submission.** Both proposed
+   extensions regressed despite better CV. The CV→LB multiplier grew
+   with CV gain — a clear sign we were exploiting training-specific
+   signal that doesn't transfer.
+
+2. **Adding EBM_full to cross_LE hurt (+0.77 LB).** EBM_full at LB 4.9
+   alone is worse than the cross_LE pair; its contribution drags the
+   ensemble toward its weaker behaviour rather than away from it. The
+   CV gain from adding it (2.97 → 2.82) was apparent, not real.
+
+3. **Router A1 failed hardest.** CV 1.84 → LB 3.35 is a 1.8× degradation.
+   A1 perfectly interpolates training rows but its formula (the +15·x4,
+   +15·x8, step at x4=0 terms) does not match test DGP. Routing
+   A1-predicted-perfect rows to A1 just moved the error to those rows.
+   The 419 "safe" rows contribute ~(3.35 − 2.94)·1500/419 ≈ 1.5 MAE of
+   extra error per routed row — consistent with A1's own LB-10.80 non-sent
+   error applied to the subset.
+
+4. **The CV→LB plateau at 2.94 is real.** Every CV-improvement trick
+   we've tried (locked integers, triple, router, x9_wc) systematically
+   degrades on LB. The x4-x9 selection shift + hidden x8 clamp + MCAR
+   sentinels put a ceiling that CV cannot see.
+
+### Remaining untested submissions (3)
+
+- `submission_ensemble_cross_LE_locked_c_50.csv` — CV 2.953 (only
+  0.02 CV gain from locking x1²; expected LB ~2.9–3.0, low-risk)
+- `submission_ensemble_triple_locked_b_lambda30.csv` — CV 2.834 (same
+  family as λ=0.5 which just scored 3.71; expected LB ~3.6–3.8)
+- (router variants already tested)
+
+### Path forward
+
+Given the confirmed plateau:
+
+- **Stop pursuing CV improvements.** Every avenue is either memorising
+  x4-x9 selection-bias structure or over-fitting within-training residuals.
+- **cross_LE is our final answer** unless we find a way to cross-validate
+  against an LB proxy (e.g., simulated test-distribution via synthetic
+  decorrelation that we can *trust*).
+- The only remaining low-risk probe is `cross_LE_locked_c_50` — a tiny
+  coefficient-locking variant of the LB-2.94 winner. If it lands ~2.90–2.95,
+  we've confirmed cross_LE is the optimum; if worse, even integer-locking
+  overfits.
+- Other ideas from the creative pass (synthetic augmentation, residual
+  modelling) are dead without a test-distribution oracle we don't have.
+
+### Final submission recommendation
+
+Primary: `submission_ensemble_cross_LE.csv` (**LB 2.94**, ~rank 20–25).
+
+## Within-cluster block ensemble — also regressed
+
+Extended the cross-view trick with a new third component: EBM trained
+within each sign(x4) cluster, where training x4 ⊥ x9 matches the test
+distribution. Built `triple_view = (EBM_block_s + LIN_x4 + EBM_x9) / 3`
+and the 2×2 quadrant variant. Also ran 4-linear and 4-EBM mirror
+ensembles for completeness.
+
+### CV results
+
+| Strategy | CV | Non-sent |
+|---|---|---|
+| cross_LE | 2.97 | 1.72 |
+| **triple_view** | **2.92** | 1.64 |
+| quad_triple (2×2 block split) | 3.06 | 1.77 |
+| ebm3_routed (EBM_block_s + EBM_x4 + EBM_x9) | 3.24 | 1.97 |
+| ebm_x4 + ebm_x9 (2-EBM) | 3.40 | 2.15 |
+| lin3_routed (LIN_x4 + LIN_x9 + LIN_block_s) | 3.95 | 2.85 |
+| **ebm4_avg** (raw b1+b2+x4+x9) | **6.20** | 5.42 |
+| **lin4_avg** (raw b1+b2+x4+x9) | **6.77** | 6.10 |
+| LIN_block_avg (unrouted) | 10.16 | 9.91 |
+| EBM_block_avg (unrouted) | 10.58 | 10.34 |
+
+### LB verdict — triple_view regressed
+
+| Submission | CV | LB | CV→LB |
+|---|---|---|---|
+| cross_LE (prior best) | 2.97 | 2.94 | 0.99× |
+| **triple_view** | 2.92 | **4.66** | **1.60×** |
+
+Adding EBM_block_s at weight 1/3 added ~1.72 MAE on LB. Root cause:
+**EBM_block_s's off-diagonal extrapolation is miscalibrated**. For an
+x4>0 test row with x9=3 (off-diagonal, 49% of test), EBM_block1 sees
+x9=3 which is ~5σ below its training x9~N(5.97, 0.57); it pins to the
+lowest training bin (~4.5) and returns a biased boundary value. EBM_x9
+trained globally handles the same x9=3 row correctly because it has
+training exposure there.
+
+**CV cannot see this**: training data has zero off-diagonal rows by
+definition, so the boundary-pinning error is never stress-tested. This
+is the same CV-optimism pattern the router, triple, and x9_wc all had.
+
+### Confirmed pattern
+
+Every approach that trains on selection-biased training structure —
+even when the approach "looks" unbiased (within-cluster models sound
+principled) — encodes that training-only structure and regresses on LB:
+
+| Approach | CV→LB multiplier |
+|---|---|
+| cross_LE (no block, no A1) | 0.99× |
+| triple_view (+ block) | 1.60× |
+| triple_locked λ=0.5 | 1.32× |
+| A1 router | 1.82× |
+
+cross_LE at LB 2.94 is the structural ceiling. The remaining headroom
+(top LB ~1.65) is unreachable without test-distribution signal we don't
+have.
+
+### Block-ensemble code
+
+- `scripts/cv_block_ensemble.py` — 2×1 block + 2×2 quadrant, EBM-only strategies
+- `scripts/cv_block_ensemble_v2.py` — adds linear variants for all combinations
+- `scripts/cv_linear_4_ensemble.py` — user-requested 4-linear mirror (CV 6.77)
+- `scripts/cv_ebm_4_ensemble.py` — user-requested 4-EBM mirror (CV 6.20)
+- `plots/block_ensemble/cv_results*.csv` — full CV tables
+
+## Sentinel-floor audit (A1–A4) — confirmed irreducible
+
+Four probes targeting the 1.52 public-LB sentinel floor. **All negative.**
+
+| Probe | Method | Result |
+|---|---|---|
+| **A1** x5 predictability | LightGBM/HistGBR/kNN/linear on 2550 non-sent rows (train+test pool), predict x5 | Best OOF MAE 1.275 (constant median). Every ML method overfits noise. |
+| **A2** 3-way feature combos | 685 products/ratios/triples against x5 | Max |r| 0.064 (abs(x4)), max spline R² 0.009. No hidden predictor. |
+| **A3** train-test leak | z-scored L2 nearest-neighbour distances test→train vs train→train | Test→train median NN dist 1.83 > train→train 1.63. Zero matches. |
+| **A4** external dataset | WebSearch for schema fingerprints | Kaggle 403; no real-world match. Schema looks synthetic. |
+
+**Conclusion**: the 1.52 LB floor is mathematically irreducible from observed
+features. x5 sentinel rows contribute a hard `228·8·1.25/1500 = 1.52 MAE`
+that no model can beat. 50% reduction (→1.47) is off the table; the
+honest ceiling is ~1.65–1.70 (top of LB, a 42–44% reduction from our 2.94).
+
+### Audit code
+
+- `scripts/audit_a1_x5_predictability.py` — 8-model CV for x5 prediction
+- `scripts/audit_a2_feature_combos.py` — 685-combo brute-force scan
+- `scripts/audit_a3_leak_scan.py` — exact + nearest-neighbour leak detection
+- `plots/sentinel_audit/a2_feature_combos.csv` — full combo ranking
 
 
 
