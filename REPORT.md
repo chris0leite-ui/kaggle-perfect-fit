@@ -416,3 +416,49 @@ training fit.
   (which could only redistribute mass across observed rows), adversarial
   weights use the full feature space and might partially close the
   shift. Not guaranteed to beat cross_LE.
+
+## 11. Final reflection — this is hand-crafted synthetic data
+
+The dataset is synthetic. A1's formula interpolates 93% of non-sentinel
+training rows to numerical precision — that cannot happen on real data.
+The DGP is some closed-form expression; the top of the leaderboard at
+1.65–1.71 (within 0.2 of the 1.52 sentinel floor) means the winners
+recovered it almost exactly. We did not.
+
+Why we are stuck at LB 2.94 despite knowing the structure:
+
+1. **Two of A1's ten terms are wrong on test.** The `+20·𝟙(x4 > 0)` step
+   and `−4·x9` collectively account for A1's CV-1.80 → LB-10.80 collapse.
+   The rest of the formula (`−100·x1² + 10·cos(5π·x2) − 8·x5 + 15·x8 +
+   x10·x11 − 25·Zaragoza`) is correct.
+2. **The x4 gap and x4-x9 selection bias make 2/10 terms unfalsifiable
+   from training alone.** No amount of CV can tell us whether the x4
+   transition is a step, a smooth sigmoid, or a cubic correction.
+   Similarly for x9 — our β_x9 estimates are biased by the training
+   joint in ways CV cannot detect.
+3. **A 23% Bernoulli clamp inside `x4<0 AND x8<0` has no observable
+   trigger up to AUC 0.76.** It is either truly stochastic in the DGP
+   or triggered by something we cannot see.
+
+**Simple solutions that would work if true — none of which we have
+evidence for**:
+
+- Submit A1 with `−4·x9` replaced by `0·x9` and the x4 step replaced
+  by `+30·x4 + 20·tanh(20·x4)`. If the DGP is A2-like with a smooth
+  x4 transition and x9 is noise, this one submission could score
+  ≤ 2.0.
+- Submit A2 with the clamp applied on the quadrant average
+  (`+11.8·x8` inside x4<0, x8<0 rather than `+15·x8`). Handles the
+  clamp via Bayes-optimal blending with no trigger needed.
+- Combine both corrections in one submission.
+
+Each is one linear-model fit, no ML. **We have not tried any of them
+because every CV-informed probe regressed on LB, and these three are
+CV-invisible (CV score would be ~3.5, LB could be ≤ 2.0 if right or ≥
+10 if wrong).** They are genuine coin-flips — no evidence either way.
+
+**Bottom line**: the final ceiling is 1.52 (sentinel floor). Our 2.94
+is ~60% of that headroom above the floor. The leaderboard top sits
+near the floor because they solved the hand-crafted formula. We did
+not, and closing the gap requires one lucky guess at the remaining
+two-term correction — not more modelling.
