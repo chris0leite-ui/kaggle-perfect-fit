@@ -16,6 +16,7 @@ submissions/*
 
 # Exception: final Kaggle submission CSVs are committed for easy download
 !submissions/submission_*.csv
+!legacy/submissions/submission_*.csv
 
 # Python
 __pycache__/
