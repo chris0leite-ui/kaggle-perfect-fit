@@ -230,6 +230,7 @@ two failure regions together cover ~83% of test rows.
 | Ensemble | **cross_LE = 0.5·LIN(no x9) + 0.5·EBM(no x4)** | 2.97 | **2.94** |
 | Ensemble | triple = 0.25·LIN + 0.25·EBM(no x4) + 0.5·EBM(full) | 2.82 | 3.71 |
 | Router | safe → A1; else → triple ensemble | **1.84** | 3.35 |
+| Ensemble | triple_view = (EBM_block_s + LIN_x4 + EBM_x9) / 3 | 2.92 | 4.66 |
 
 Column-name conventions: **LIN** is the hand-crafted linear design
 matrix (`x1², cos(5π·x2), x4, x5_imp, x5_is_sent, x8, x10, x11,
@@ -260,10 +261,22 @@ errors on off-diagonal rows partially cancel, hitting LB 2.94.
 **Subsequent extensions regressed on LB despite better CV**: adding
 EBM(full) at 50% weight (`triple`, CV 2.82) landed at LB 3.71, a 1.32×
 CV→LB degradation; routing "safe" rows to A1 (CV 1.84) landed at LB
-3.35, a 1.82× degradation. In both cases the CV gain was apparent, not
-real — extra capacity absorbed training-specific selection structure
-that doesn't transfer to test. The plateau at **LB 2.94 is the real
-ceiling** under available signal.
+3.35, a 1.82× degradation; adding a within-cluster block model to
+cross_LE (`triple_view`, CV 2.92) landed at LB 4.66, a 1.60× degradation.
+In every case the CV gain was apparent, not real — extra capacity
+absorbed training-specific selection structure that doesn't transfer
+to test. The plateau at **LB 2.94 is the real ceiling** under available
+signal.
+
+The block-model failure is instructive: it looked principled because
+within each sign(x4) cluster, x4 and x9 are already independent in
+training — exactly matching the test joint. But on off-diagonal test
+rows (49% of test), the block EBM extrapolates: an x4>0 test row with
+x9=3 gets routed to the block-1 model whose training x9 was
+N(5.97, 0.57), so x9=3 is 5σ out-of-distribution and EBM pins it to
+the lowest training bin. That pinning produces biased boundary values
+that CV never stress-tests, because training is 100% on-diagonal by
+construction.
 
 ## 7. Final submissions
 
@@ -278,9 +291,10 @@ Four CSV files live in `submissions/`. The notebook
 | `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** |
 | `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | 3.71 |
 | `submission_router_A1_triple.csv` | 1.84 | 3.35 |
+| `submission_triple_view.csv` | 2.92 | 4.66 |
 
 **Primary recommendation: `submission_ensemble_cross_LE.csv`** (LB 2.94).
-Both candidates with lower CV regressed on LB — the CV→LB multiplier
+Every candidate with lower CV regressed on LB — the CV→LB multiplier
 grew with CV gain, confirming cross_LE is the plateau.
 
 ## 8. Noise floor and placement

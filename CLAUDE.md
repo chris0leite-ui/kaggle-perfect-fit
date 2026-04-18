@@ -1186,6 +1186,7 @@ Remaining competitive submissions (7 files in `submissions/`):
 | `submission_ensemble_triple_locked_b_lambda30.csv` | 2.83 | ? | untested |
 | `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | **3.71** | tested — regression |
 | `submission_router_A1_triple.csv` | **1.84** | **3.35** | tested — regression |
+| `submission_triple_view.csv` | 2.92 | **4.66** | tested — regression |
 
 ## LB verdict on router + triple — both regress vs cross_LE
 
@@ -1249,6 +1250,73 @@ Given the confirmed plateau:
 ### Final submission recommendation
 
 Primary: `submission_ensemble_cross_LE.csv` (**LB 2.94**, ~rank 20–25).
+
+## Within-cluster block ensemble — also regressed
+
+Extended the cross-view trick with a new third component: EBM trained
+within each sign(x4) cluster, where training x4 ⊥ x9 matches the test
+distribution. Built `triple_view = (EBM_block_s + LIN_x4 + EBM_x9) / 3`
+and the 2×2 quadrant variant. Also ran 4-linear and 4-EBM mirror
+ensembles for completeness.
+
+### CV results
+
+| Strategy | CV | Non-sent |
+|---|---|---|
+| cross_LE | 2.97 | 1.72 |
+| **triple_view** | **2.92** | 1.64 |
+| quad_triple (2×2 block split) | 3.06 | 1.77 |
+| ebm3_routed (EBM_block_s + EBM_x4 + EBM_x9) | 3.24 | 1.97 |
+| ebm_x4 + ebm_x9 (2-EBM) | 3.40 | 2.15 |
+| lin3_routed (LIN_x4 + LIN_x9 + LIN_block_s) | 3.95 | 2.85 |
+| **ebm4_avg** (raw b1+b2+x4+x9) | **6.20** | 5.42 |
+| **lin4_avg** (raw b1+b2+x4+x9) | **6.77** | 6.10 |
+| LIN_block_avg (unrouted) | 10.16 | 9.91 |
+| EBM_block_avg (unrouted) | 10.58 | 10.34 |
+
+### LB verdict — triple_view regressed
+
+| Submission | CV | LB | CV→LB |
+|---|---|---|---|
+| cross_LE (prior best) | 2.97 | 2.94 | 0.99× |
+| **triple_view** | 2.92 | **4.66** | **1.60×** |
+
+Adding EBM_block_s at weight 1/3 added ~1.72 MAE on LB. Root cause:
+**EBM_block_s's off-diagonal extrapolation is miscalibrated**. For an
+x4>0 test row with x9=3 (off-diagonal, 49% of test), EBM_block1 sees
+x9=3 which is ~5σ below its training x9~N(5.97, 0.57); it pins to the
+lowest training bin (~4.5) and returns a biased boundary value. EBM_x9
+trained globally handles the same x9=3 row correctly because it has
+training exposure there.
+
+**CV cannot see this**: training data has zero off-diagonal rows by
+definition, so the boundary-pinning error is never stress-tested. This
+is the same CV-optimism pattern the router, triple, and x9_wc all had.
+
+### Confirmed pattern
+
+Every approach that trains on selection-biased training structure —
+even when the approach "looks" unbiased (within-cluster models sound
+principled) — encodes that training-only structure and regresses on LB:
+
+| Approach | CV→LB multiplier |
+|---|---|
+| cross_LE (no block, no A1) | 0.99× |
+| triple_view (+ block) | 1.60× |
+| triple_locked λ=0.5 | 1.32× |
+| A1 router | 1.82× |
+
+cross_LE at LB 2.94 is the structural ceiling. The remaining headroom
+(top LB ~1.65) is unreachable without test-distribution signal we don't
+have.
+
+### Block-ensemble code
+
+- `scripts/cv_block_ensemble.py` — 2×1 block + 2×2 quadrant, EBM-only strategies
+- `scripts/cv_block_ensemble_v2.py` — adds linear variants for all combinations
+- `scripts/cv_linear_4_ensemble.py` — user-requested 4-linear mirror (CV 6.77)
+- `scripts/cv_ebm_4_ensemble.py` — user-requested 4-EBM mirror (CV 6.20)
+- `plots/block_ensemble/cv_results*.csv` — full CV tables
 
 ## Sentinel-floor audit (A1–A4) — confirmed irreducible
 
