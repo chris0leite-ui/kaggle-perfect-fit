@@ -1181,20 +1181,74 @@ Remaining competitive submissions (7 files in `submissions/`):
 |---|---|---|---|
 | `submission_ebm.csv` | 3.11 | 5.66 | baseline |
 | `submission_ebm_heavy_smooth.csv` | 3.08 | 4.90 | tested |
-| `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** | current best |
+| `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** | **current best** |
 | `submission_ensemble_cross_LE_locked_c_50.csv` | 2.95 | ? | untested alt |
 | `submission_ensemble_triple_locked_b_lambda30.csv` | 2.83 | ? | untested |
-| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | ? | untested |
-| `submission_router_A1_triple.csv` | **1.84** | ? | **top CV, expected LB ~2.5-2.6** |
+| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | **3.71** | tested — regression |
+| `submission_router_A1_triple.csv` | **1.84** | **3.35** | tested — regression |
 
-Path forward: test `submission_router_A1_triple.csv` next on LB. If it
-lands around 2.5, the router's A1-on-safe-rows design is our best bet
-given the plateau at 2.94. Beyond that, breaking below 2.5 requires
-either (a) finding the hidden clamp trigger at much higher precision
-than AUC 0.76, (b) a DGP oracle that generalises to test, or (c) a
-neural-network residual over A1 trained with strong regularization.
-All remain open but each faces the same fundamental constraint:
-training is selection-biased and we have no test-distribution labels.
+## LB verdict on router + triple — both regress vs cross_LE
+
+Two previously untested candidates returned LB scores:
+
+| Submission | CV | LB | CV→LB multiplier |
+|---|---|---|---|
+| cross_LE (prior best) | 2.97 | 2.94 | 0.99× |
+| triple_locked_b λ=0.5 | 2.82 | **3.71** | 1.32× |
+| router_A1_triple | 1.84 | **3.35** | **1.82×** |
+
+**Key takeaways**:
+
+1. **cross_LE at LB 2.94 remains the best submission.** Both proposed
+   extensions regressed despite better CV. The CV→LB multiplier grew
+   with CV gain — a clear sign we were exploiting training-specific
+   signal that doesn't transfer.
+
+2. **Adding EBM_full to cross_LE hurt (+0.77 LB).** EBM_full at LB 4.9
+   alone is worse than the cross_LE pair; its contribution drags the
+   ensemble toward its weaker behaviour rather than away from it. The
+   CV gain from adding it (2.97 → 2.82) was apparent, not real.
+
+3. **Router A1 failed hardest.** CV 1.84 → LB 3.35 is a 1.8× degradation.
+   A1 perfectly interpolates training rows but its formula (the +15·x4,
+   +15·x8, step at x4=0 terms) does not match test DGP. Routing
+   A1-predicted-perfect rows to A1 just moved the error to those rows.
+   The 419 "safe" rows contribute ~(3.35 − 2.94)·1500/419 ≈ 1.5 MAE of
+   extra error per routed row — consistent with A1's own LB-10.80 non-sent
+   error applied to the subset.
+
+4. **The CV→LB plateau at 2.94 is real.** Every CV-improvement trick
+   we've tried (locked integers, triple, router, x9_wc) systematically
+   degrades on LB. The x4-x9 selection shift + hidden x8 clamp + MCAR
+   sentinels put a ceiling that CV cannot see.
+
+### Remaining untested submissions (3)
+
+- `submission_ensemble_cross_LE_locked_c_50.csv` — CV 2.953 (only
+  0.02 CV gain from locking x1²; expected LB ~2.9–3.0, low-risk)
+- `submission_ensemble_triple_locked_b_lambda30.csv` — CV 2.834 (same
+  family as λ=0.5 which just scored 3.71; expected LB ~3.6–3.8)
+- (router variants already tested)
+
+### Path forward
+
+Given the confirmed plateau:
+
+- **Stop pursuing CV improvements.** Every avenue is either memorising
+  x4-x9 selection-bias structure or over-fitting within-training residuals.
+- **cross_LE is our final answer** unless we find a way to cross-validate
+  against an LB proxy (e.g., simulated test-distribution via synthetic
+  decorrelation that we can *trust*).
+- The only remaining low-risk probe is `cross_LE_locked_c_50` — a tiny
+  coefficient-locking variant of the LB-2.94 winner. If it lands ~2.90–2.95,
+  we've confirmed cross_LE is the optimum; if worse, even integer-locking
+  overfits.
+- Other ideas from the creative pass (synthetic augmentation, residual
+  modelling) are dead without a test-distribution oracle we don't have.
+
+### Final submission recommendation
+
+Primary: `submission_ensemble_cross_LE.csv` (**LB 2.94**, ~rank 20–25).
 
 
 
