@@ -228,8 +228,8 @@ two failure regions together cover ~83% of test rows.
 | EBM | all-smoothed (smoothing 4,000, no refine) | 3.03 | — |
 | Ensemble | EBM + GAM, 70/30 weighted | 2.91 | 6.47 |
 | Ensemble | **cross_LE = 0.5·LIN(no x9) + 0.5·EBM(no x4)** | 2.97 | **2.94** |
-| Ensemble | triple = 0.25·LIN + 0.25·EBM(no x4) + 0.5·EBM(full) | 2.82 | — |
-| Router | safe → A1; else → triple ensemble | **1.84** | — |
+| Ensemble | triple = 0.25·LIN + 0.25·EBM(no x4) + 0.5·EBM(full) | 2.82 | 3.71 |
+| Router | safe → A1; else → triple ensemble | **1.84** | 3.35 |
 
 Column-name conventions: **LIN** is the hand-crafted linear design
 matrix (`x1², cos(5π·x2), x4, x5_imp, x5_is_sent, x8, x10, x11,
@@ -257,9 +257,13 @@ holds the nearest-bin value rather than projecting a trend.
 dramatically. `cross_LE` pairs LIN without x9 (immune to the shift)
 with EBM without x4 (handles everything else nonparametrically);
 errors on off-diagonal rows partially cancel, hitting LB 2.94.
-Adding EBM(full) at 50% weight (`triple`) drops CV to 2.82. The
-router exploits A1's zero-parameter exactness on the ~20% of test
-rows where the safe predicate holds.
+**Subsequent extensions regressed on LB despite better CV**: adding
+EBM(full) at 50% weight (`triple`, CV 2.82) landed at LB 3.71, a 1.32×
+CV→LB degradation; routing "safe" rows to A1 (CV 1.84) landed at LB
+3.35, a 1.82× degradation. In both cases the CV gain was apparent, not
+real — extra capacity absorbed training-specific selection structure
+that doesn't transfer to test. The plateau at **LB 2.94 is the real
+ceiling** under available signal.
 
 ## 7. Final submissions
 
@@ -272,8 +276,12 @@ Four CSV files live in `submissions/`. The notebook
 |---|---|---|
 | `submission_ebm_heavy_smooth.csv` | 3.08 | **4.90** |
 | `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** |
-| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | untested |
-| `submission_router_A1_triple.csv` | 1.84 | untested |
+| `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | 3.71 |
+| `submission_router_A1_triple.csv` | 1.84 | 3.35 |
+
+**Primary recommendation: `submission_ensemble_cross_LE.csv`** (LB 2.94).
+Both candidates with lower CV regressed on LB — the CV→LB multiplier
+grew with CV gain, confirming cross_LE is the plateau.
 
 ## 8. Noise floor and placement
 
@@ -290,11 +298,21 @@ Four CSV files live in `submissions/`. The notebook
 
 **No submission can beat 1.52 MAE on the public LB.** The top cluster
 at 1.65–1.71 implies those teams recovered the DGP to ≈ 0.15 MAE on
-non-sentinel rows. Our best LB (2.94) is ~1.4 MAE above them. The gap
-is approximately "A1's 93% non-sentinel perfection on the safe
-quadrants that we couldn't safely route to", not a modelling-quality
-gap — EBM-family submissions track CV well and are already near
-their ceiling.
+non-sentinel rows. Our best LB (2.94) is ~1.4 MAE above them.
+Decomposing: cross_LE's non-sentinel LB MAE is
+`(2.94 × 1500 − 228 × 10) / 1272 ≈ 1.67`, so the residual headroom
+lives entirely in non-sentinel rows.
+
+The A1 router's LB 3.35 implies non-sentinel MAE ≈ 2.16, ~0.9 above the
+heuristic projection of `(419·0.38 + 853·1.7)/1272 = 1.27`. The broken
+assumption was that A1's training non-sentinel MAE (0.38) transfers to
+test. It does not. A1's `+15·x4 + 20·𝟙(x4 > 0)` step encodes the training
+selection rule (empty x4 gap), not the true DGP, so even "safe" rows
+(|x4| > 0.167, on-diagonal x4-x9) get systematic per-row error: at x4 =
+0.5, A1 predicts `+27.5` while A2's pure-linear `+30.5·x4` predicts
+`+15.25`. On test (where the gap selection doesn't hold) the A2-style
+form is closer, which is why EBM's bounded shapes beat A1 despite worse
+training fit.
 
 ## 9. Rejected ideas (one line each)
 
@@ -360,3 +378,27 @@ their ceiling.
   off-diagonal rows would close the train-test shift if we had the
   true target function. A1 is not that function on the off-diagonal
   side; we don't know what is.
+- **Alternative functional forms for the x4 transition.** A1's step at
+  x4 = 0 was unfalsifiable on training (zero observations in the gap).
+  Plausible alternatives that also fit training near-perfectly but may
+  extrapolate better:
+  - **Smooth transition**: `+30·x4 + 20·tanh(k·x4)` with large k looks
+    like A1's step on training yet passes smoothly through zero on test.
+  - **Pure linear with cubic correction**: `+30·x4 − 2·x4³`.
+  - **A2 form + explicit x8 clamp**: `+30·x4 + 14·x8` outside the clamp
+    region, with the `−18.4·x8` adjustment on the clamped subset. Needs
+    a clamp trigger at AUC ≫ 0.76.
+  Each is cheap to encode but costs a submission slot to validate; none
+  have been tested.
+- **LB-driven ensembling.** We have three LB-validated base learners
+  (cross_LE 2.94, EBM_heavy_smooth 4.90, EBM 5.66). Submitting 2–3
+  weighted blends (e.g. `0.7·cross_LE + 0.3·EBM_smooth`) would let us
+  triangulate optimal weights using real test signal rather than CV.
+  Expected gain modest (~0.05–0.15 MAE) since cross_LE already
+  dominates.
+- **Adversarial validation.** Train a classifier to distinguish train
+  from test; down-weight training rows with high "train-like" scores
+  and refit EBM. Unlike our failed x4-x9 density-ratio reweighting
+  (which could only redistribute mass across observed rows), adversarial
+  weights use the full feature space and might partially close the
+  shift. Not guaranteed to beat cross_LE.
