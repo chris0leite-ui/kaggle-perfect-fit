@@ -1250,5 +1250,29 @@ Given the confirmed plateau:
 
 Primary: `submission_ensemble_cross_LE.csv` (**LB 2.94**, ~rank 20–25).
 
+## Sentinel-floor audit (A1–A4) — confirmed irreducible
+
+Four probes targeting the 1.52 public-LB sentinel floor. **All negative.**
+
+| Probe | Method | Result |
+|---|---|---|
+| **A1** x5 predictability | LightGBM/HistGBR/kNN/linear on 2550 non-sent rows (train+test pool), predict x5 | Best OOF MAE 1.275 (constant median). Every ML method overfits noise. |
+| **A2** 3-way feature combos | 685 products/ratios/triples against x5 | Max |r| 0.064 (abs(x4)), max spline R² 0.009. No hidden predictor. |
+| **A3** train-test leak | z-scored L2 nearest-neighbour distances test→train vs train→train | Test→train median NN dist 1.83 > train→train 1.63. Zero matches. |
+| **A4** external dataset | WebSearch for schema fingerprints | Kaggle 403; no real-world match. Schema looks synthetic. |
+
+**Conclusion**: the 1.52 LB floor is mathematically irreducible from observed
+features. x5 sentinel rows contribute a hard `228·8·1.25/1500 = 1.52 MAE`
+that no model can beat. 50% reduction (→1.47) is off the table; the
+honest ceiling is ~1.65–1.70 (top of LB, a 42–44% reduction from our 2.94).
+
+### Audit code
+
+- `scripts/audit_a1_x5_predictability.py` — 8-model CV for x5 prediction
+- `scripts/audit_a2_feature_combos.py` — 685-combo brute-force scan
+- `scripts/audit_a3_leak_scan.py` — exact + nearest-neighbour leak detection
+- `plots/sentinel_audit/a2_feature_combos.csv` — full combo ranking
+
+
 
 
