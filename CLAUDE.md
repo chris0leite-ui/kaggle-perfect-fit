@@ -14,48 +14,44 @@ Dataset: 1500 rows, numeric features `x1, x2, x4–x11`, categorical features `C
 # Install dependencies
 pip install -r requirements.txt
 
-# Run all tests
-python3 -m pytest tests/
-
-# Run a single test file
-python3 -m pytest tests/test_data.py -v
-
-# Run a single test by name
-python3 -m pytest tests/test_data.py::test_split_sizes -v
+# Reproduce the final submissions (the only supported workflow now)
+jupyter notebook notebooks/final_submissions.ipynb
 ```
 
-Tests must be run from the repo root so that `src/` is importable.
+The exploratory `src/` package and its pytest suite were archived to
+`legacy/src/` and `legacy/tests/` (see `legacy/README.md`). None of the
+six kept scripts in `scripts/` or the final notebook import from them;
+they are all self-contained.
 
 ## Architecture
 
 ```
-src/
-  data.py          # split_holdout(), load_train_holdout()
-  eda.py           # detect_sentinels(), correlations(), scatter/partial-residual plots
-  clusters.py      # assign_clusters(), replace_sentinels(), cluster_stats(), cluster plots
-  causal.py        # run_pc(), run_direct_lingam(), consensus_graph(), bootstrap_edges()
-  causal_plots.py  # plot_dag(), plot_adjacency_heatmap(), plot_edge_bootstrap()
-  features.py      # CityEncoder, SentinelHandler, X9Residualizer, SplineBasisExpander, InteractionAdder, build_preprocessor()
-  models.py        # GAMRegressor, EBMRegressor, AveragingEnsemble, WeightedEnsemble, StackedEnsemble, build_*() for 20+ models
-  evaluate.py      # split_val_test(), cross_validate_model(), evaluate_on_holdout(), compare_models(), final_test_evaluation()
-  diagnostics.py   # compute_shap_values(), compute_ks_tests(), compute_residuals(), EBM shape/interaction plots
-  tuning.py        # grid_search_cv() — diagnostics-informed hyperparameter search
-tests/             # mirrors src/ — one test file per module (115 tests total)
-data/              # gitignored except .gitkeep; holds dataset.csv, train.csv, holdout.csv
-plots/             # EDA, causal, cluster, and diagnostic visualizations + index.html viewer
-  diagnostics/     # ~70 PNGs: SHAP, distribution shift, residuals, QQ, EBM shapes
-  eda_round2/      # x10*x11 interaction analysis, x5 sentinel scatter
-  round2/          # Round 2 results: comparison charts, residual plots, QQ plots, results.html
-submissions/       # gitignored except .gitkeep
+notebooks/
+  final_submissions.ipynb   Self-contained. Rebuilds the four kept submissions byte-identically.
+scripts/                    Six CV / ensemble scripts kept as reference for the top submissions.
+data/                       Competition data (gitignored; put dataset.csv, test.csv, sample_submission.csv here).
+submissions/                Four competitive submission CSVs (see "Final state" section).
+plots/                      Three high-signal subfolders: diagnostics/, formulas/, a1_clamp/.
+legacy/                     Archived src/, tests/, exploratory scripts, stale plots, stale submissions.
+README.md                   TL;DR + reproduction instructions.
+REPORT.md                   Work report: observations + discussion per section.
+LEARNINGS.md                Portable patterns for future tabular competitions.
+CLAUDE.md                   This file — full development log.
 ```
 
-**Data split:** `data/dataset.csv` is the full dataset. `src/data.split_holdout()` produces `data/train.csv` (1200 rows) and `data/holdout.csv` (300 rows, seed=42). All exploration and model development use `train.csv` only; `holdout.csv` is reserved for final evaluation.
+**Data split:** `data/dataset.csv` is the full labelled set (1,500 rows).
+The notebook and scripts evaluate with `KFold(n_splits=5, shuffle=True,
+random_state=42)` on the full dataset — the earlier 1200/300 holdout
+split (produced by the archived `legacy/src/data.split_holdout()`) is
+not used in the final workflow.
 
 ## Workflow
 
 **Clarify before planning, plan before coding.** Always ask clarifying questions and go back and forth with the user until there is full alignment on goals, approach, and scope. Do not write plans or code until clarity is achieved. Explore options together, discuss trade-offs, and confirm the direction before proceeding.
 
-Red-green TDD: write a failing test in `tests/`, implement the minimum in `src/` to pass, then refactor.
+Historical: early rounds used red-green TDD against `src/` + `tests/`;
+that harness was archived to `legacy/` once the final scripts and
+notebook stabilised.
 
 ## Stack
 
@@ -1000,14 +996,18 @@ Tuning on top:
 - **0.5 is the optimal blend weight** for LIN_x4 / EBM_x9 (worse either way)
 - If CV→LB continues to hold, triple ensemble projected LB: 2.7–2.85
 
-### Remaining candidates in `submissions/` (6 files)
+### Remaining candidates in `submissions/` (4 files after cleanup)
 
-- `submission_ebm.csv` — LB 5.66 (baseline reference)
-- `submission_ebm_heavy_smooth.csv` — LB 4.9 (previous best, reference)
+- `submission_ebm_heavy_smooth.csv` — LB 4.9 (reference baseline)
 - `submission_ensemble_cross_LE.csv` — **LB 2.94 confirmed**
-- `submission_ensemble_cross_LE_locked_c_50.csv` — CV 2.953 (locked x1²=−102)
-- `submission_ensemble_triple_locked_b_lambda30.csv` — CV 2.834 (λ=0.3 variant)
 - `submission_ensemble_triple_locked_b_lambda50.csv` — **CV 2.824, next top candidate**
+- `submission_router_A1_triple.csv` — CV 1.84 (added after this section; see "Routing ensemble")
+
+Three earlier candidates — `submission_ebm.csv` (LB 5.66),
+`submission_ensemble_cross_LE_locked_c_50.csv` (CV 2.953), and
+`submission_ensemble_triple_locked_b_lambda30.csv` (CV 2.834) — were
+moved to `legacy/submissions/` during the final cleanup (see
+`legacy/README.md`).
 
 ### Ensemble code
 
@@ -1175,18 +1175,19 @@ that generalises to test.
 
 ### Final state
 
-Remaining competitive submissions (7 files in `submissions/`):
+Competitive submissions kept in `submissions/`; dominated ones moved to
+`legacy/submissions/` during post-experiment cleanup.
 
 | File | CV | LB | Status |
 |---|---|---|---|
-| `submission_ebm.csv` | 3.11 | 5.66 | baseline |
 | `submission_ebm_heavy_smooth.csv` | 3.08 | 4.90 | tested |
 | `submission_ensemble_cross_LE.csv` | 2.97 | **2.94** | **current best** |
-| `submission_ensemble_cross_LE_locked_c_50.csv` | 2.95 | ? | untested alt |
-| `submission_ensemble_triple_locked_b_lambda30.csv` | 2.83 | ? | untested |
 | `submission_ensemble_triple_locked_b_lambda50.csv` | 2.82 | **3.71** | tested — regression |
 | `submission_router_A1_triple.csv` | **1.84** | **3.35** | tested — regression |
 | `submission_triple_view.csv` | 2.92 | **4.66** | tested — regression |
+| `legacy/submissions/submission_ebm.csv` | 3.11 | 5.66 | archived baseline |
+| `legacy/submissions/submission_ensemble_cross_LE_locked_c_50.csv` | 2.95 | ? | archived alt |
+| `legacy/submissions/submission_ensemble_triple_locked_b_lambda30.csv` | 2.83 | ? | archived |
 
 ## LB verdict on router + triple — both regress vs cross_LE
 
@@ -1340,7 +1341,6 @@ honest ceiling is ~1.65–1.70 (top of LB, a 42–44% reduction from our 2.94).
 - `scripts/audit_a2_feature_combos.py` — 685-combo brute-force scan
 - `scripts/audit_a3_leak_scan.py` — exact + nearest-neighbour leak detection
 - `plots/sentinel_audit/a2_feature_combos.csv` — full combo ranking
-
 
 
 
