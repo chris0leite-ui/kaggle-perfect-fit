@@ -1615,13 +1615,29 @@ are identical on training.
 
 **Leaderboard trajectory**:
 
-| submission                      | LB    |
-|---------------------------------|------:|
-| A1 literal (v3)                 |  9.79 |
-| cross_LE (median-imputed x5)    |  2.94 |
-| v4 (cross_LE + x5 patch)        |  1.66 |
-| v5 (clean-x5 retrain)           |  1.37 |
-| **TRUE_DGP (1(x9>5) closed form)** | **0.00** |
+| submission                                   | LB    | uses DGP formula | uses seed recovery |
+|----------------------------------------------|------:|:---:|:---:|
+| A1 literal (v3)                              |  9.79 | yes | yes |
+| cross_LE (median-imputed x5)                 |  2.94 | no  | no  |
+| router_A1_cross_LE                           |  2.53 | partial (A1 on safe rows only) | no |
+| true_dgp_no_seed                             |  **1.69** | yes | no |
+| v4 (cross_LE + x5 patch)                     |  1.66 | no  | yes |
+| v5 (clean-x5 retrain)                        |  1.37 | no  | yes |
+| **TRUE_DGP + recovered x5 (1(x9>5) closed form)** | **0.00** | yes | yes |
+
+The `true_dgp_no_seed` result at LB 1.69 is particularly informative:
+it lands exactly in the public-LB top cluster (1.65–1.71), confirming
+that the top of the leaderboard was reached by **DGP recovery alone,
+without seed hacking**. The gap above the theoretical 1.52 sentinel
+floor is explained by the public-LB subset variance (Kaggle scores a
+random fraction of rows publicly; sentinel ratio in that subset has
+~±5% variance around 15.2%).
+
+`router_A1_cross_LE` at LB 2.53 is the best partial-formula submission
+without seed hacking: A1's closed form on the 27.9% of test rows whose
+(x4, x9, sentinel) profile matches training, `cross_LE` elsewhere.
+Per-segment projection `0·0.279 + 1.75·0.569 + 10·0.152 ≈ 2.52` matched
+the observed LB within 0.01.
 
 **Archaeology completed in 5 rounds**:
 

@@ -663,13 +663,25 @@ training, 1500/1500). This is the complete closed form.
 
 **Final leaderboard**:
 
-| submission | LB |
-|---|---:|
-| A1 literal | 9.79 |
-| cross_LE | 2.94 |
-| v4 (cross_LE + x5 patch) | 1.66 |
-| v5 (clean-x5 retrain) | 1.37 |
-| **TRUE_DGP** | **0.00** |
+| submission | LB | uses formula | uses seed |
+|---|---:|:---:|:---:|
+| A1 literal (wrong indicator) | 9.79 | yes | yes |
+| cross_LE (median-imputed x5) | 2.94 | no | no |
+| router_A1_cross_LE | 2.53 | partial | no |
+| true_dgp_no_seed (median-imputed x5) | **1.69** | yes | no |
+| v4 (cross_LE + sentinel x5 patch) | 1.66 | no | yes |
+| v5 (clean-x5 retrain) | 1.37 | no | yes |
+| **TRUE_DGP + recovered x5** | **0.00** | yes | yes |
+
+The `true_dgp_no_seed` row (LB 1.69) is the decisive observation: it
+isolates DGP-recovery from seed-recovery. Applying the closed form
+to test with sentinel x5 imputed at the training non-sentinel median
+(9.343) scores **1.69 on LB — exactly in the public-LB top cluster
+(1.65–1.71)**. That cluster was therefore reached by recovering the
+formula alone, without seed hacking. The 0.17 gap above the
+theoretical 1.52 floor is public-LB-subset variance (Kaggle scores a
+random fraction of rows; the realised sentinel ratio in that subset
+can vary ±5% around 15.2%).
 
 **What made the hand-crafted DGP survive for so long**:
 
