@@ -629,3 +629,58 @@ Given cross_LE's CV→LB ratio of 0.99 and simple_linear_interact's 2.0:
 The leaderboard top at 1.65 was previously thought to be the
 theoretical floor (sentinel floor 1.52 + ~0.1 non-sent). With x5
 recovered, submissions that match the full test DGP can beat this.
+
+## 13. 🎯 TRUE DGP — LB 0.00
+
+The user raised a critical observation: the competition description states
+test data is in the convex hull of training data. That implies a single
+DGP across both splits. Since A1 fits training exactly (max |err| 4e-14)
+but scored LB 9.79, A1 must be *equivalent-on-training* to the true DGP
+via a feature-coupling coincidence — not the DGP itself.
+
+**The substitution**: on training, `1(x4 > 0) ≡ 1(x9 > 5)` for all 1500
+rows (the piecewise c4→x4 transform couples sign(x4) to the x9 cluster
+via id ranges). On test where x4 ⊥ x9, the two indicators disagree on
+~50% of rows.
+
+**True DGP**:
+
+    target = −100·x1² + 10·cos(5π·x2) + 15·x4 − 8·x5 + 15·x8 − 4·x9
+           + x10·x11 − 25·zaragoza + 20·1(x9 > 5) + 92.5
+
+**Verification** by projecting `20·(1(x9>5) − 1(x4>0))` onto the observed
+v5-A1 delta basis on test (x9 ~ U(3, 7), x4 ⊥ x9):
+
+|                   | predicted | observed |
+|-------------------|----------:|---------:|
+| β_x9              | +7.5      | +7.46    |
+| β_1(x4>0)         | −20       | −19.78   |
+| intercept         | −27.5     | −27.03   |
+
+The three coefficients match to 1%. Same formula fits training non-clamp
+rows to machine precision via either indicator (they are identical on
+training, 1500/1500). This is the complete closed form.
+
+**Final leaderboard**:
+
+| submission | LB |
+|---|---:|
+| A1 literal | 9.79 |
+| cross_LE | 2.94 |
+| v4 (cross_LE + x5 patch) | 1.66 |
+| v5 (clean-x5 retrain) | 1.37 |
+| **TRUE_DGP** | **0.00** |
+
+**What made the hand-crafted DGP survive for so long**:
+
+The author's single non-obvious touch was using `1(x9 > 5)` rather than the
+semantically equivalent `1(x4 > 0)`. On training, these are tautologically
+equal — no fit, no CV, no residual-analysis tool can distinguish them. Only
+the test-distribution change exposes the difference, and only if the analyst
+hypothesises the substitution from structural reasoning (feature-coupling
+arithmetic) rather than data-driven methods.
+
+Every other archaeological step (seed recovery, clamp origin, pooled
+rediscovery, step/x9 decomposition) merely narrowed the space so the
+final substitution could be guessed. The convex-hull invariance principle
+the user invoked was what made the closed form derivable.

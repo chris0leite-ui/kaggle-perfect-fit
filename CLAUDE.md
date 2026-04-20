@@ -1575,3 +1575,62 @@ projected LB ≈ 0.
 - `scripts/seed_verify.py` — consolidated reproducer
 - `scripts/seed_build_submissions.py` — submission builder
 - `plots/seed_hunt/README.md` — full sequence and diagnostics
+
+## 🎯 TRUE DGP RECOVERED — LB 0.00
+
+**Key insight (user)**: the author's competition description states test data
+must be in the convex hull of training data. This constrains the DGP to be
+the SAME function on both splits. A1 fits training exactly yet fails on test
+(LB 9.79), so A1 must be *equivalent-on-training* to the true DGP but
+numerically different on test — possible only if a term in A1 uses a feature
+combination that is tautologically equal to a different combination on
+training but not on test.
+
+**The substitution**: on training, `1(x4 > 0) ≡ 1(x9 > 5)` (all 1500 rows
+match), because the piecewise c4→x4 transform couples sign(x4) with the
+x9-cluster assignment via id ranges. On test where x4 ⊥ x9, the two
+indicators differ on ~50% of rows.
+
+**True DGP**:
+
+```
+target = −100·x1² + 10·cos(5π·x2) + 15·x4 − 8·x5 + 15·x8 − 4·x9
+       + x10·x11 − 25·zaragoza + 20·1(x9 > 5) + 92.5
+```
+
+Plus the id<100 clamp correction `−15·x8 + 1 + ε` (training only; ε ~ N(0, 0.067)).
+
+**Prediction verification** (projection of `20·(1(x9>5) − 1(x4>0))` onto the
+v5-A1 delta basis on test with x4 ⊥ x9, x9 ~ U(3, 7)):
+
+| coefficient | predicted | observed |
+|---|---:|---:|
+| β_x9        | +7.5   | +7.46  |
+| β_step      | −20    | −19.78 |
+| intercept   | −27.5  | −27.03 |
+
+Match to 1–2% (sample-size noise). Same formula fits training non-clamp rows
+to max |err| = 4.26e-14 (machine precision) via either indicator, since they
+are identical on training.
+
+**Leaderboard trajectory**:
+
+| submission                      | LB    |
+|---------------------------------|------:|
+| A1 literal (v3)                 |  9.79 |
+| cross_LE (median-imputed x5)    |  2.94 |
+| v4 (cross_LE + x5 patch)        |  1.66 |
+| v5 (clean-x5 retrain)           |  1.37 |
+| **TRUE_DGP (1(x9>5) closed form)** | **0.00** |
+
+**Archaeology completed in 5 rounds**:
+
+1. Pooled-feature rediscovery → "x4-x9 is the only shifted pair"
+2. x4 functional-form oracle → "A1's +20 step double-counts x9 cluster"
+3. Clamp archaeology → "trigger is id<100, training-only artifact"
+4. Seed recovery → "np.random.RandomState(4242); test x5 fully recoverable"
+5. Convex-hull invariance → "train≡test DGP forces 1(x4>0) = 1(x9>5) substitution"
+
+The author's single "hand-crafted catch" was that A1's indicator could be
+written two equivalent ways on training, and only one way would generalise.
+Every other piece of the DGP was transparent once we had clean x5.
